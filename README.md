@@ -1,6 +1,6 @@
 # Pitwall
 
-**The F1 data command center for Claude.** 22 tools covering race results, lap-by-lap telemetry, tyre strategy, pit stops, weather, race control, driver comparisons, and historical data back to 1950.
+**The F1 data command center for Claude.** 69 tools covering race results, lap-by-lap telemetry, tyre strategy, pit stops, weather, race control, driver comparisons, visual plots, and historical data back to 1950.
 
 Works with **Claude Desktop**, **Claude Code**, and any MCP-compatible client.
 
@@ -81,21 +81,27 @@ These use F1's free static archive and Jolpica API. Install: `pip install "mcp[c
 | `get_historical_results` | Race results from 1950 to present |
 | `get_championship_standings` | Driver/constructor championships from 1950+ |
 
-### Full Mode (22 tools — adds FastF1 analysis + visual plots)
+### Full Mode (69 tools — adds FastF1 analysis, visual plots, deep analytics)
 
 Install: `pip install -r requirements-full.txt`
 
-Everything in Lite, plus:
+Everything in Lite, plus 54 FastF1-powered tools:
 
-| Tool | Description |
-|------|-------------|
-| `get_race_results` | Detailed results via FastF1 |
-| `plot_telemetry_comparison` | Speed/throttle/brake traces — returns image |
-| `plot_gear_shifts` | Gear shift map on track layout — returns image |
-| `get_fastest_lap_data` | Sector times, compound, tyre life |
-| `get_driver_standings_fastf1` | Championship standings with points |
-| `analyze_lap_consistency` | Mean, std dev, spread analysis |
-| `get_session_summary` | Complete session overview |
+| Category | Tools |
+|----------|-------|
+| **Visual Plots** | `plot_telemetry_comparison`, `plot_gear_shifts`, `plot_multi_telemetry_comparison`, `plot_driver_telemetry_comparison` |
+| **Telemetry Analysis** | `analyze_brake_points`, `analyze_rpm_data`, `analyze_drs_usage` |
+| **Lap Analysis** | `get_lap_times_fastf1`, `get_deleted_laps`, `analyze_lap_consistency`, `get_fastest_sectors`, `get_personal_best_laps`, `compare_sector_times` |
+| **Strategy** | `get_driver_tyre_detail`, `get_stint_analysis`, `compare_tire_compounds`, `compare_tire_age_performance`, `analyze_starting_tires`, `compare_strategies` |
+| **Race Analysis** | `get_race_results`, `get_sprint_results`, `get_session_summary`, `get_fastest_lap_data`, `detect_overtakes`, `compare_grid_to_finish`, `get_qualifying_progression` |
+| **Pit Stops** | `get_pit_stop_detail`, `get_fastest_pit_stops` |
+| **Driver & Team** | `get_driver_info`, `get_driver_standings`, `get_constructor_standings`, `team_head_to_head`, `get_team_laps`, `analyze_long_run_pace` |
+| **Track & Safety** | `get_circuit_info`, `get_track_status`, `get_track_record`, `get_race_control_messages`, `get_penalties`, `get_dnf_list` |
+| **Speed & Position** | `get_speed_trap_comparison`, `get_position_changes`, `get_gap_to_leader` |
+| **History** | `get_race_winners_history` |
+| **Live Data** | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
+| **Radio** | `get_driver_radio` (via OpenF1 API) |
+| **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
 
 ## Data Sources
 
@@ -153,6 +159,66 @@ ALO = Alonso        STR = Stroll      OCO = Ocon       BOT = Bottas
 ALB = Albon         HUL = Hulkenberg  COL = Colapinto  LIN = Lindblad
 ```
 
+## Real-Time Race Data (SignalR Client)
+
+Pitwall includes a raw SignalR Core WebSocket client that connects directly to F1's live timing feed — the same feed powering the official F1 app. Zero latency, no intermediary APIs.
+
+```python
+import asyncio
+from signalr_client import F1LiveClient
+
+async def main():
+    client = F1LiveClient(no_auth=True)  # Free: timing, weather, race control
+
+    @client.on("TimingData")
+    def on_timing(data, timestamp):
+        lines = data.get("Lines", {})
+        for num, info in lines.items():
+            pos = info.get("Position", "?")
+            gap = info.get("GapToLeader", "")
+            print(f"P{pos} #{num} Gap: {gap}")
+
+    @client.on("RaceControlMessages")
+    def on_rc(data, timestamp):
+        for msg in data.get("Messages", {}).values():
+            print(f"[{msg.get('Flag', '')}] {msg.get('Message', '')}")
+
+    await client.connect()
+
+asyncio.run(main())
+```
+
+### Free vs F1 TV Premium
+
+| Topic | Free (no auth) | F1 TV Premium |
+|-------|---------------|---------------|
+| Timing, gaps, sectors | Yes | Yes |
+| Race control, flags, penalties | Yes | Yes |
+| Weather, track status | Yes | Yes |
+| Tyre compounds, stints | Yes | Yes |
+| Team radio URLs | Yes | Yes |
+| **Car telemetry** (speed, RPM, throttle) | No | **Yes** |
+| **GPS positions** (X/Y/Z) | No | **Yes** |
+
+To use F1 TV Premium auth:
+```bash
+python3 auth_setup.py   # One-time browser login, saves token locally
+```
+
+```python
+client = F1LiveClient(no_auth=False, auth_token=load_token())
+```
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `signalr_client.py` | Raw SignalR Core WebSocket client |
+| `decompressor.py` | Zlib decompression for CarData.z / Position.z |
+| `merger.py` | Keyframe + delta state management |
+| `topics.py` | All 20 SignalR topics with metadata |
+| `auth_setup.py` | F1 TV token setup (browser-based OAuth) |
+
 ## Development
 
 ```bash
@@ -160,10 +226,27 @@ git clone https://github.com/darshjoshi/pitwall.git
 cd pitwall
 pip install -r requirements-full.txt
 
-# Run locally
+# Run MCP server locally
 python3 pitwall.py              # stdio mode
 python3 pitwall.py --http       # HTTP mode (port 8000)
 python3 pitwall.py --http --port 3000  # custom port
+
+# Run live SignalR client (during a race)
+python3 -c "
+import asyncio
+from signalr_client import F1LiveClient
+
+async def main():
+    client = F1LiveClient(no_auth=True)
+
+    @client.on_all
+    def on_any(topic, data, ts):
+        print(f'[{topic}] received')
+
+    await client.connect()
+
+asyncio.run(main())
+"
 ```
 
 ## Credits
