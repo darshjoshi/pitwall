@@ -307,6 +307,18 @@ python3 pitwall.py --http --port 3000
 - [Jolpica-F1](https://github.com/jolpica/jolpica-f1) — the Ergast API successor
 - [drivenrajat/f1](https://github.com/drivenrajat/f1) — inspiration for FastF1 tool patterns
 
+---
+
+## Built by
+
+**Darsh Joshi** — AI Engineer
+
+- LinkedIn: [linkedin.com/in/darshjoshi](https://linkedin.com/in/darshjoshi)
+- Email: [contact@darshjoshi.com](mailto:contact@darshjoshi.com)
+- GitHub: [github.com/darshjoshi](https://github.com/darshjoshi)
+
+Questions, ideas, or want to contribute? Open an issue or reach out.
+
 ## License
 
 MIT
