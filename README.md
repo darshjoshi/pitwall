@@ -31,12 +31,15 @@ pip install -r requirements-full.txt
 
 ### Step 2: Connect to Claude
 
+<details>
+<summary><strong>macOS</strong></summary>
+
 **Claude Code:**
 ```bash
 claude mcp add pitwall -- python3 /absolute/path/to/pitwall.py
 ```
 
-**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
@@ -47,6 +50,63 @@ claude mcp add pitwall -- python3 /absolute/path/to/pitwall.py
   }
 }
 ```
+</details>
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+**1. Find your Python path:**
+```cmd
+where python
+```
+This will return something like `C:\Users\YourName\AppData\Local\Programs\Python\Python313\python.exe` or `C:\Python313\python.exe`.
+
+**2. Note where you cloned Pitwall:**
+For example: `C:\Users\YourName\Projects\pitwall\pitwall.py`
+
+**Claude Code (PowerShell):**
+```powershell
+claude mcp add pitwall -- python C:\Users\YourName\Projects\pitwall\pitwall.py
+```
+
+**Claude Desktop** — add to `%APPDATA%\Claude\claude_desktop_config.json`:
+
+> To open this folder, press `Win + R`, type `%APPDATA%\Claude`, and hit Enter. If the `Claude` folder or `claude_desktop_config.json` doesn't exist, create them.
+
+```json
+{
+  "mcpServers": {
+    "pitwall": {
+      "command": "python",
+      "args": ["C:\\Users\\YourName\\Projects\\pitwall\\pitwall.py"]
+    }
+  }
+}
+```
+
+> **Note:** Use double backslashes (`\\`) in the JSON path, or forward slashes (`/`) — both work. The command is `python` (not `python3`) on Windows.
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
+
+**Claude Code:**
+```bash
+claude mcp add pitwall -- python3 /absolute/path/to/pitwall.py
+```
+
+**Claude Desktop** — add to `~/.config/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "pitwall": {
+      "command": "python3",
+      "args": ["/absolute/path/to/pitwall.py"]
+    }
+  }
+}
+```
+</details>
 
 ### Step 3: Restart and ask
 
@@ -122,6 +182,7 @@ This opens a browser window where you log in with your F1 TV account. The auth t
 - Expires every ~4 days — re-run `python3 auth_setup.py` to refresh
 - Never uploaded anywhere — stays on your machine
 - Only used by the SignalR client for live sessions
+- Token stored at `~/.f1token` (macOS/Linux) or `%USERPROFILE%\.f1token` (Windows)
 
 ### Using the live client
 
