@@ -6,27 +6,37 @@ Works with **Claude Desktop**, **Claude Code**, and any MCP-compatible client.
 
 ![Pitwall Demo — Race Standings and Tyre Strategy](assets/demo-standings.png)
 
-## Quick Start
+---
 
-### Claude Code (2 commands)
+## Setup
+
+### Step 1: Clone and install
 
 ```bash
-pip install "mcp[cli]" requests
-claude mcp add pitwall -- python3 /path/to/pitwall.py
+git clone https://github.com/darshjoshi/pitwall.git
+cd pitwall
 ```
 
-Restart Claude Code. Ask anything:
-> "Who won the 2026 Chinese GP?"
-> "Compare Antonelli vs Russell's pace at China"
+**Choose your mode:**
 
-### Claude Desktop (copy-paste config)
-
-1. Install dependencies:
 ```bash
+# Lite (15 tools) — race results, telemetry, strategy, pit stops, weather, historical
 pip install "mcp[cli]" requests
+
+# Full (69 tools) — adds FastF1 visual plots, deep analysis, live data tools
+pip install -r requirements-full.txt
 ```
 
-2. Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+> Pitwall auto-detects what's installed. No FastF1? It starts with 15 tools. Install FastF1 later? Restart and you get 69. No config changes needed.
+
+### Step 2: Connect to Claude
+
+**Claude Code:**
+```bash
+claude mcp add pitwall -- python3 /absolute/path/to/pitwall.py
+```
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 ```json
 {
   "mcpServers": {
@@ -38,7 +48,23 @@ pip install "mcp[cli]" requests
 }
 ```
 
-3. Restart Claude Desktop. The tools appear in the tools panel.
+### Step 3: Restart and ask
+
+Restart Claude Code or Claude Desktop. Then ask anything:
+
+> "Who won the 2026 Chinese GP?"
+> "What was Verstappen's speed on lap 25 at China?"
+> "Compare Hamilton vs Leclerc's tyre strategy"
+> "Who won the 2005 world championship?"
+
+### Optional: Upload the Skill (Claude Desktop)
+
+For beginner-friendly F1 explanations, upload `SKILL.md` as a skill in Claude Desktop:
+1. Open Claude Desktop → Settings → Skills → Upload
+2. Drag and drop `SKILL.md` from this repo
+3. Claude will now explain F1 jargon inline (DRS, undercut, compound, etc.)
+
+---
 
 ## What You Can Ask
 
@@ -54,14 +80,101 @@ pip install "mcp[cli]" requests
 | "Top speeds at Monza 2024?" | `get_speed_traps` |
 | "Norris's lap times in the race" | `get_lap_times` |
 | "Who won the 2005 championship?" | `get_championship_standings` |
+| "Plot Verstappen vs Hamilton speed trace" | `plot_telemetry_comparison` |
+| "Show me the gear shift map at Monaco" | `plot_gear_shifts` |
+| "Who gained the most positions?" | `compare_grid_to_finish` |
+| "Overtakes in the race" | `detect_overtakes` |
 
 ![Pitwall Demo — Lap Telemetry](assets/demo-telemetry.png)
 
+---
+
+## Live Race Data (Optional — F1 TV Required)
+
+Pitwall includes a raw SignalR Core WebSocket client that connects directly to F1's live timing feed during races. Most data is free. Car telemetry and GPS positions require an F1 TV subscription.
+
+### What's free vs what needs F1 TV
+
+| Data | Free (no account) | F1 TV subscription |
+|------|-------------------|-------------------|
+| Race positions, gaps, lap times | Yes | Yes |
+| Race control, flags, penalties | Yes | Yes |
+| Weather, track status | Yes | Yes |
+| Tyre compounds, stint info | Yes | Yes |
+| Team radio URLs | Yes | Yes |
+| **Car telemetry** (speed, RPM, throttle, brake) | No | **Yes** |
+| **GPS positions** (X/Y/Z coordinates) | No | **Yes** |
+
+> **Important:** All of this data (including telemetry and GPS) becomes **free** in the static archive ~30 minutes after a session ends. F1 TV is only needed for live telemetry *during* a race.
+
+### Authenticating with F1 TV
+
+If you have an F1 TV Access, Pro, or Premium subscription:
+
+```bash
+python3 auth_setup.py
+```
+
+This opens a browser window where you log in with your F1 TV account. The auth token is saved locally to `~/.f1token` and `~/Library/Application Support/fastf1/f1auth.json`.
+
+**Token details:**
+- It's a JWT (JSON Web Token) — not your password
+- Expires every ~4 days — re-run `python3 auth_setup.py` to refresh
+- Never uploaded anywhere — stays on your machine
+- Only used by the SignalR client for live sessions
+
+### Using the live client
+
+```python
+import asyncio
+from signalr_client import F1LiveClient
+
+async def main():
+    # Free mode — timing, weather, race control (no auth needed)
+    client = F1LiveClient(no_auth=True)
+
+    @client.on("TimingData")
+    def on_timing(data, timestamp):
+        for num, info in data.get("Lines", {}).items():
+            print(f"P{info.get('Position','?')} #{num} Gap: {info.get('GapToLeader','')}")
+
+    @client.on("RaceControlMessages")
+    def on_rc(data, timestamp):
+        for msg in data.get("Messages", {}).values():
+            print(f"[{msg.get('Flag', '')}] {msg.get('Message', '')}")
+
+    await client.connect()
+
+asyncio.run(main())
+```
+
+For full telemetry (speed, RPM, throttle, brake, GPS):
+
+```python
+from auth_setup import load_token
+
+client = F1LiveClient(no_auth=False, auth_token=load_token())
+
+@client.on("CarData.z")
+def on_telemetry(data, timestamp):
+    # Speed, RPM, throttle, brake, gear, DRS at ~4Hz per car
+    ...
+
+@client.on("Position.z")
+def on_position(data, timestamp):
+    # GPS X/Y/Z coordinates at ~4Hz per car
+    ...
+```
+
+---
+
 ## Tools
 
-### Lite Mode (15 tools — no heavy dependencies)
+### Lite Mode (15 tools)
 
-These use F1's free static archive and Jolpica API. Install: `pip install "mcp[cli]" requests`
+Install: `pip install "mcp[cli]" requests`
+
+Uses F1's free static archive (2018-present) and Jolpica API (1950-present). No API keys needed.
 
 | Tool | Description |
 |------|-------------|
@@ -81,7 +194,7 @@ These use F1's free static archive and Jolpica API. Install: `pip install "mcp[c
 | `get_historical_results` | Race results from 1950 to present |
 | `get_championship_standings` | Driver/constructor championships from 1950+ |
 
-### Full Mode (69 tools — adds FastF1 analysis, visual plots, deep analytics)
+### Full Mode (69 tools)
 
 Install: `pip install -r requirements-full.txt`
 
@@ -103,21 +216,26 @@ Everything in Lite, plus 54 FastF1-powered tools:
 | **Radio** | `get_driver_radio` (via OpenF1 API) |
 | **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
 
+---
+
 ## Data Sources
 
-All data is **free and requires no API keys or authentication**.
+All core data is **free and requires no API keys**.
 
-| Source | Data | Coverage |
-|--------|------|----------|
-| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | Telemetry, timing, strategy, pit stops, weather, race control | 2018-present |
-| [Jolpica-F1](https://api.jolpi.ca/ergast/f1/) | Historical results and championships | 1950-present |
-| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | Enhanced telemetry analysis and plots | 2018-present |
+| Source | What it provides | Coverage | Auth needed? |
+|--------|-----------------|----------|-------------|
+| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | Telemetry, timing, strategy, pit stops, weather, race control | 2018-present | No |
+| [Jolpica-F1](https://api.jolpi.ca/ergast/f1/) | Historical results and championships | 1950-present | No |
+| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | Enhanced telemetry analysis and plots | 2018-present | No |
+| [F1 SignalR Core](https://livetiming.formula1.com/signalrcore) (optional) | Real-time race data during live sessions | Live only | Free for most data, F1 TV for telemetry |
+
+---
 
 ## How It Works
 
 Pitwall reads from F1's publicly available static timing archive — the same data that powers the official F1 app. After each session ends (~30 minutes), F1 publishes 33 data feeds per session including full car telemetry (speed, RPM, throttle, brake, gear, DRS at ~4Hz per car), GPS positions, tyre data, pit stops, and race control messages.
 
-The telemetry tool (`get_telemetry`) correlates the timing stream with the car data stream to extract telemetry for a specific driver on a specific lap — something no other MCP server does.
+The telemetry tool (`get_telemetry`) correlates the timing stream with the car data stream to extract telemetry for a specific driver on a specific lap — something no other F1 MCP server does.
 
 ### Architecture
 
@@ -125,16 +243,10 @@ The telemetry tool (`get_telemetry`) correlates the timing stream with the car d
 Claude ──MCP──> Pitwall ──HTTP──> livetiming.formula1.com/static/ (free)
                        ──HTTP──> api.jolpi.ca/ergast/f1/ (free)
                        ──lib──>  FastF1 (optional, local)
+                       ──WS───> SignalR Core (optional, live races)
 ```
 
-### Auto-Degradation
-
-FastF1 not installed? Pitwall still starts with 15 tools — no crashes, no missing dependency errors. Install FastF1 later for visual plots and deep analysis.
-
-```
-$ pip install "mcp[cli]" requests    # 15 tools (lite)
-$ pip install -r requirements-full.txt  # 22 tools (full)
-```
+---
 
 ## Race Names
 
@@ -149,8 +261,6 @@ Race names are fuzzy-matched. All of these work:
 
 ## Driver Codes
 
-Standard 3-letter codes:
-
 ```
 VER = Verstappen    HAM = Hamilton    NOR = Norris     LEC = Leclerc
 ANT = Antonelli     RUS = Russell     PIA = Piastri    BEA = Bearman
@@ -159,95 +269,37 @@ ALO = Alonso        STR = Stroll      OCO = Ocon       BOT = Bottas
 ALB = Albon         HUL = Hulkenberg  COL = Colapinto  LIN = Lindblad
 ```
 
-## Real-Time Race Data (SignalR Client)
+---
 
-Pitwall includes a raw SignalR Core WebSocket client that connects directly to F1's live timing feed — the same feed powering the official F1 app. Zero latency, no intermediary APIs.
-
-```python
-import asyncio
-from signalr_client import F1LiveClient
-
-async def main():
-    client = F1LiveClient(no_auth=True)  # Free: timing, weather, race control
-
-    @client.on("TimingData")
-    def on_timing(data, timestamp):
-        lines = data.get("Lines", {})
-        for num, info in lines.items():
-            pos = info.get("Position", "?")
-            gap = info.get("GapToLeader", "")
-            print(f"P{pos} #{num} Gap: {gap}")
-
-    @client.on("RaceControlMessages")
-    def on_rc(data, timestamp):
-        for msg in data.get("Messages", {}).values():
-            print(f"[{msg.get('Flag', '')}] {msg.get('Message', '')}")
-
-    await client.connect()
-
-asyncio.run(main())
-```
-
-### Free vs F1 TV Premium
-
-| Topic | Free (no auth) | F1 TV Premium |
-|-------|---------------|---------------|
-| Timing, gaps, sectors | Yes | Yes |
-| Race control, flags, penalties | Yes | Yes |
-| Weather, track status | Yes | Yes |
-| Tyre compounds, stints | Yes | Yes |
-| Team radio URLs | Yes | Yes |
-| **Car telemetry** (speed, RPM, throttle) | No | **Yes** |
-| **GPS positions** (X/Y/Z) | No | **Yes** |
-
-To use F1 TV Premium auth:
-```bash
-python3 auth_setup.py   # One-time browser login, saves token locally
-```
-
-```python
-client = F1LiveClient(no_auth=False, auth_token=load_token())
-```
-
-### Files
+## Project Files
 
 | File | Purpose |
 |------|---------|
-| `signalr_client.py` | Raw SignalR Core WebSocket client |
+| `pitwall.py` | MCP server — 69 tools, auto-degrades to 15 without FastF1 |
+| `signalr_client.py` | Raw SignalR Core WebSocket client for live race data |
 | `decompressor.py` | Zlib decompression for CarData.z / Position.z |
-| `merger.py` | Keyframe + delta state management |
-| `topics.py` | All 20 SignalR topics with metadata |
-| `auth_setup.py` | F1 TV token setup (browser-based OAuth) |
+| `merger.py` | Keyframe + delta state management for F1's incremental format |
+| `topics.py` | All 20 SignalR topics with auth/compression metadata |
+| `auth_setup.py` | F1 TV token setup — browser-based OAuth flow |
+| `SKILL.md` | Beginner-friendly skill for Claude Desktop (upload via Settings) |
+| `CLAUDE.md` | Project context for Claude Code |
+| `requirements.txt` | Lite dependencies |
+| `requirements-full.txt` | Full dependencies (FastF1 + SignalR) |
 
-## Development
+---
+
+## Running the Server
 
 ```bash
-git clone https://github.com/darshjoshi/pitwall.git
-cd pitwall
-pip install -r requirements-full.txt
+# MCP stdio (Claude Code / Claude Desktop)
+python3 pitwall.py
 
-# Run MCP server locally
-python3 pitwall.py              # stdio mode
-python3 pitwall.py --http       # HTTP mode (port 8000)
-python3 pitwall.py --http --port 3000  # custom port
-
-# Run live SignalR client (during a race)
-python3 -c "
-import asyncio
-from signalr_client import F1LiveClient
-
-async def main():
-    client = F1LiveClient(no_auth=True)
-
-    @client.on_all
-    def on_any(topic, data, ts):
-        print(f'[{topic}] received')
-
-    await client.connect()
-
-asyncio.run(main())
-"
+# MCP HTTP (remote / self-hosted)
+python3 pitwall.py --http
+python3 pitwall.py --http --port 3000
 ```
+
+---
 
 ## Credits
 
