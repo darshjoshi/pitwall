@@ -1,0 +1,11 @@
+cache/
+__pycache__/
+*.pyc
+.env
+.f1token
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.gstack/
