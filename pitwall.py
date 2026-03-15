@@ -53,14 +53,35 @@ except ImportError:
 # Initialize server
 mcp = FastMCP(
     "Pitwall",
-    instructions=(
-        "Pitwall is an F1 data server with 60+ tools. "
-        "Use list_races to find a session, then query data with other tools. "
-        "Race names are fuzzy-matched: 'china', 'shanghai', 'chinese' all work. "
-        "Driver codes: VER=Verstappen, HAM=Hamilton, NOR=Norris, LEC=Leclerc, "
-        "ANT=Antonelli, RUS=Russell, PIA=Piastri. Default year is 2026. "
-        "For lap-specific telemetry, use get_telemetry with driver and lap number."
-    ),
+    instructions="""Pitwall — F1 data command center with 69 tools.
+
+HOW TO USE:
+1. Use list_races(year) to find sessions. Race names are fuzzy-matched: 'china', 'shanghai', 'chinese' all work.
+2. Query data with specific tools: get_standings, get_telemetry, get_tyre_strategy, etc.
+3. Default year is 2026. Use 'last year' as 2025.
+
+DRIVER CODES: VER=Verstappen, HAM=Hamilton, NOR=Norris, LEC=Leclerc, ANT=Antonelli, RUS=Russell, PIA=Piastri, BEA=Bearman, GAS=Gasly, LAW=Lawson, HAD=Hadjar, SAI=Sainz, ALO=Alonso, OCO=Ocon, BOT=Bottas, ALB=Albon, HUL=Hulkenberg, STR=Stroll, COL=Colapinto, LIN=Lindblad, PER=Perez.
+
+TOOL ROUTING:
+- Who won / results / standings → get_standings
+- Lap times / pace → get_lap_times
+- Speed on a specific lap / telemetry → get_telemetry(driver, lap=N)
+- Tyre strategy / compounds → get_tyre_strategy
+- Pit stops / fastest pit → get_pit_stops
+- Flags / penalties / safety car → get_race_control
+- Weather / rain / temperature → get_weather
+- Top speed / speed traps → get_speed_traps
+- Compare two drivers → get_driver_comparison
+- Championship standings 1950+ → get_championship_standings
+- Historical results 1950+ → get_historical_results
+- Visual speed trace plot → plot_telemetry_comparison (FastF1 required)
+- Gear shift map → plot_gear_shifts (FastF1 required)
+
+CROSS-YEAR COMPARISON: All tools accept a year parameter. Compare the same driver at the same track across years (e.g. 'VER lap 25 at China 2025 vs 2026').
+
+SPRINT WEEKENDS: When querying a sprint weekend, both Sprint and Race have the same internal type. The resolver prefers exact name match, so session_type='Race' gets the main race, not the sprint. For the sprint specifically, use session_type='Sprint'.
+
+DATA COVERAGE: Static API tools cover 2018-present with 33 feeds per session. Jolpica covers 1950-present for historical results and championships. All data is free — no API keys needed.""",
 )
 
 
