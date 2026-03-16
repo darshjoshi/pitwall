@@ -34,6 +34,7 @@ from mcp.server.fastmcp import FastMCP
 try:
     import fastf1
     import fastf1.plotting
+    import pandas as pd
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
