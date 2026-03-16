@@ -1996,26 +1996,28 @@ if FASTF1_AVAILABLE:
             
             laps = session.laps.pick_drivers(driver).pick_accurate()
             
-            fresh_laps = laps[laps['FreshTyre'] == True]
-            used_laps = laps[laps['FreshTyre'] == False]
-            
+            # Compare early stint (fresh grip) vs late stint (degraded)
+            FRESH_THRESHOLD = 5
+            fresh_laps = laps[laps['TyreLife'] <= FRESH_THRESHOLD]
+            used_laps = laps[laps['TyreLife'] > FRESH_THRESHOLD]
+
             result = f"🛞 Tire Age Performance - {driver} ({gp} {year}):\n\n"
-            
+
             if len(fresh_laps) > 0:
                 fresh_avg = fresh_laps['LapTime'].mean()
-                result += f"Fresh Tires:\n"
+                result += f"Early Stint (laps 1-{FRESH_THRESHOLD} on each set):\n"
                 result += f"  Laps: {len(fresh_laps)}\n"
                 result += f"  Avg Time: {str(fresh_avg).split('days')[-1].strip()}\n\n"
-            
+
             if len(used_laps) > 0:
                 used_avg = used_laps['LapTime'].mean()
-                result += f"Used Tires:\n"
+                result += f"Late Stint (lap {FRESH_THRESHOLD + 1}+ on each set):\n"
                 result += f"  Laps: {len(used_laps)}\n"
                 result += f"  Avg Time: {str(used_avg).split('days')[-1].strip()}\n\n"
-            
+
             if len(fresh_laps) > 0 and len(used_laps) > 0:
                 delta = (used_avg - fresh_avg).total_seconds()
-                result += f"Difference: {delta:.3f}s (used tires slower)"
+                result += f"Degradation: +{delta:.3f}s (late stint slower)\n"
             
             return result
         except Exception as e:
@@ -2176,11 +2178,17 @@ if FASTF1_AVAILABLE:
     def analyze_long_run_pace(year: int, gp: str, driver: str, session: str = 'FP2') -> str:
         """Analyze race simulation pace from practice sessions."""
         try:
+            # Sprint weekends only have FP1 — fall back from FP2
+            if session == 'FP2':
+                event = fastf1.get_event(year, gp)
+                if event['EventFormat'] != 'conventional':
+                    session = 'FP1'
+
             s = fastf1.get_session(year, gp, session)
             s.load(telemetry=False)
-            
+
             laps = s.laps.pick_drivers(driver)
-            
+
             # Filter for consecutive laps (race sim)
             long_runs = []
             current_run = []
@@ -2438,7 +2446,7 @@ if FASTF1_AVAILABLE:
             
             # Get personal best laps (IsPersonalBest flag)
             pb_laps = s.laps[s.laps['IsPersonalBest'] == True]
-            pb_laps = pb_laps.sort_values('LapTime')
+            pb_laps = pb_laps.loc[pb_laps.groupby('Driver')['LapTime'].idxmin()].sort_values('LapTime')
             
             result = f"⭐ Personal Best Laps - {gp} {year} {session}:\n\n"
             
