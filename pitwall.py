@@ -352,6 +352,7 @@ def get_lap_times(year: int = 2026, race: str = "", driver: str = "",
         state = _get_keyframe(path, "TimingData")
         laps = defaultdict(list)
         cur = {}
+        prev_lap_num = {}
 
         for line in resp.text.strip().split("\n"):
             ts, ds = _parse_stream_line(line)
@@ -369,7 +370,11 @@ def get_lap_times(year: int = 2026, race: str = "", driver: str = "",
                 lap_num = info.get("NumberOfLaps")
                 lt = info.get("LastLapTime", {})
                 val = lt.get("Value", "") if isinstance(lt, dict) else ""
-                if val and lap_num and val != cur.get(num):
+                if not val or not lap_num:
+                    continue
+                # Record when lap number increments (new lap completed)
+                if lap_num != prev_lap_num.get(num):
+                    prev_lap_num[num] = lap_num
                     if lap_start <= lap_num <= lap_end:
                         d = dm.get(num, {"tla": f"#{num}"})
                         laps[num].append(f"  Lap {lap_num:>2}: {val}")
@@ -2086,8 +2091,9 @@ if FASTF1_AVAILABLE:
                 durations.append(duration)
             pit_laps['PitDuration'] = durations
 
-            # Drop stops where we couldn't compute duration, then sort
+            # Drop stops where we couldn't compute duration or value is bogus
             valid_stops = pit_laps[pit_laps['PitDuration'].notna()]
+            valid_stops = valid_stops[(valid_stops['PitDuration'] > 0) & (valid_stops['PitDuration'] < 120)]
             if len(valid_stops) == 0:
                 return "No pit stop durations available"
             fastest_stops = valid_stops.nsmallest(top_n, 'PitDuration')
@@ -2506,7 +2512,7 @@ if FASTF1_AVAILABLE:
                 if 'Q3' in pole and pd.notna(pole['Q3']):
                     result += f"Time: {pole['Q3']}\n"
             
-            result += f"\nTotal Laps: {len(s.laps)}\n"
+            result += f"\nTotal Laps: {int(s.laps['LapNumber'].max())}\n"
             result += f"Drivers: {len(s.drivers)}\n"
             
             # Weather summary
