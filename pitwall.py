@@ -1301,13 +1301,16 @@ if FASTF1_AVAILABLE:
             # Fetch Radio
             url_r = f"https://api.openf1.org/v1/team_radio?session_key={session_key}&driver_number={driver_number}"
             r_data = requests.get(url_r).json()
-            
+
+            if not r_data:
+                return f"No radio clips found for driver #{driver_number} in this session. OpenF1 may not have data for {year} yet."
+
             transcript = f"📻 Last 5 Radio Messages (Driver #{driver_number}):\n"
             for msg in r_data[-5:]:
                 transcript += f"- {msg['recording_url']}\n"
             return transcript
         except Exception as e:
-            return f"Radio Error: {e}"
+            return f"Radio data unavailable: {e}. OpenF1 may not have data for {year} yet."
     
     # ==============================================================================
     # MODULE 7: PIT STOPS & STRATEGY
@@ -2405,9 +2408,13 @@ if FASTF1_AVAILABLE:
             
             d1_fastest = team_laps.pick_drivers(d1).pick_fastest()
             d2_fastest = team_laps.pick_drivers(d2).pick_fastest()
-            
+
+            if d1_fastest is None or d2_fastest is None:
+                missing = d1 if d1_fastest is None else d2
+                return f"⚔️ Head-to-Head - {team} ({gp} {year} {session}):\n\n{missing} has no valid laps in this session. Try session='R' instead."
+
             result = f"⚔️ Head-to-Head - {team} ({gp} {year} {session}):\n\n"
-            
+
             # Lap times
             d1_time = d1_fastest['LapTime'].total_seconds()
             d2_time = d2_fastest['LapTime'].total_seconds()
