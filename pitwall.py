@@ -369,11 +369,11 @@ def get_lap_times(year: int = 2026, race: str = "", driver: str = "",
                 lap_num = info.get("NumberOfLaps")
                 lt = info.get("LastLapTime", {})
                 val = lt.get("Value", "") if isinstance(lt, dict) else ""
-                if val and lap_num and lap_num != cur.get(num):
+                if val and lap_num and val != cur.get(num):
                     if lap_start <= lap_num <= lap_end:
                         d = dm.get(num, {"tla": f"#{num}"})
                         laps[num].append(f"  Lap {lap_num:>2}: {val}")
-                    cur[num] = lap_num
+                    cur[num] = val
 
         result = f"=== {race_name} {year} — Lap Times ===\n\n"
         for num, entries in laps.items():
@@ -827,6 +827,43 @@ def get_championship_standings(year: int = 0, standings_type: str = "driver") ->
         return f"Error: {e}"
 
 
+
+# Common GP name → Ergast circuitId mapping for Jolpica/Ergast API lookups
+CIRCUIT_NAME_MAP = {
+    'australia': 'albert_park', 'melbourne': 'albert_park', 'albert park': 'albert_park',
+    'bahrain': 'bahrain', 'sakhir': 'bahrain',
+    'saudi': 'jeddah', 'saudi arabia': 'jeddah', 'jeddah': 'jeddah',
+    'china': 'shanghai', 'shanghai': 'shanghai', 'chinese': 'shanghai',
+    'japan': 'suzuka', 'suzuka': 'suzuka', 'japanese': 'suzuka',
+    'miami': 'miami',
+    'emilia romagna': 'imola', 'imola': 'imola',
+    'monaco': 'monaco', 'monte carlo': 'monaco',
+    'canada': 'villeneuve', 'montreal': 'villeneuve',
+    'spain': 'catalunya', 'barcelona': 'catalunya', 'spanish': 'catalunya',
+    'austria': 'red_bull_ring', 'spielberg': 'red_bull_ring',
+    'britain': 'silverstone', 'silverstone': 'silverstone', 'british': 'silverstone',
+    'hungary': 'hungaroring', 'hungaroring': 'hungaroring', 'budapest': 'hungaroring',
+    'belgium': 'spa', 'spa': 'spa',
+    'netherlands': 'zandvoort', 'zandvoort': 'zandvoort', 'dutch': 'zandvoort',
+    'italy': 'monza', 'monza': 'monza', 'italian': 'monza',
+    'azerbaijan': 'baku', 'baku': 'baku',
+    'singapore': 'marina_bay', 'marina bay': 'marina_bay',
+    'united states': 'americas', 'usa': 'americas', 'austin': 'americas', 'cota': 'americas',
+    'mexico': 'rodriguez', 'mexico city': 'rodriguez',
+    'brazil': 'interlagos', 'sao paulo': 'interlagos', 'interlagos': 'interlagos',
+    'las vegas': 'vegas', 'vegas': 'vegas',
+    'qatar': 'losail', 'losail': 'losail',
+    'abu dhabi': 'yas_marina', 'yas marina': 'yas_marina',
+    'portugal': 'portimao', 'portimao': 'portimao',
+    'turkey': 'istanbul', 'istanbul': 'istanbul',
+}
+
+
+def _resolve_circuit_id(gp: str):
+    """Resolve a GP name/country to an Ergast circuit ID."""
+    return CIRCUIT_NAME_MAP.get(gp.lower().strip())
+
+
 # =============================================================================
 # FASTF1 TOOLS — Only registered if FastF1 is installed
 # =============================================================================
@@ -892,7 +929,10 @@ if FASTF1_AVAILABLE:
             s = fastf1.get_session(year, gp, session)
             s.load(telemetry=False)
             lap = s.laps.pick_driver(driver).pick_fastest()
-            
+
+            if lap is None or pd.isna(lap['LapTime']):
+                return f"No qualifying lap found for {driver} in {gp} {year} {session}. The driver may have been eliminated in an earlier session."
+
             return f"""
             🚗 Driver: {driver}
             ⏱️ Time: {str(lap['LapTime']).split('days')[-1]}
@@ -1282,15 +1322,33 @@ if FASTF1_AVAILABLE:
             
             # Get pit laps (laps where pit stop occurred)
             pit_laps = laps[laps['PitInTime'].notna()]
-            
+
             if len(pit_laps) == 0:
                 return "No pit stops found"
-            
+
+            # Build a map of PitOutTime per driver per lap for cross-lap lookups
+            all_session_laps = session.laps
             result = "🔧 Pit Stops:\n"
             for idx, lap in pit_laps.iterrows():
-                pit_time = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
-                result += f"Lap {int(lap['LapNumber'])}: {lap['Driver']} - {pit_time:.1f}s ({lap['Compound']})\n"
-            
+                duration = None
+                # Try 1: Use PitStopDuration if available
+                if 'PitStopDuration' in lap.index and pd.notna(lap.get('PitStopDuration')):
+                    dur_val = lap['PitStopDuration']
+                    duration = dur_val.total_seconds() if hasattr(dur_val, 'total_seconds') else float(dur_val)
+                # Try 2: PitOutTime on same row
+                if (duration is None or pd.isna(duration)) and pd.notna(lap.get('PitOutTime')) and pd.notna(lap['PitInTime']):
+                    duration = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
+                # Try 3: PitOutTime on the next lap for this driver
+                if duration is None or pd.isna(duration):
+                    drv_laps = all_session_laps[all_session_laps['Driver'] == lap['Driver']].sort_values('LapNumber')
+                    next_laps = drv_laps[drv_laps['LapNumber'] > lap['LapNumber']]
+                    if len(next_laps) > 0:
+                        nxt = next_laps.iloc[0]
+                        if pd.notna(nxt.get('PitOutTime')):
+                            duration = (nxt['PitOutTime'] - lap['PitInTime']).total_seconds()
+                dur_str = f"{duration:.1f}s" if duration is not None and not pd.isna(duration) else "N/A"
+                result += f"Lap {int(lap['LapNumber'])}: {lap['Driver']} - {dur_str} ({lap['Compound']})\n"
+
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -1317,7 +1375,7 @@ if FASTF1_AVAILABLE:
                 result += f" (After Round {round_number})"
             result += ":\n\n"
             
-            for driver in standings[:10]:
+            for driver in standings:
                 pos = driver['position']
                 name = f"{driver['Driver']['givenName']} {driver['Driver']['familyName']}"
                 points = driver['points']
@@ -1468,9 +1526,16 @@ if FASTF1_AVAILABLE:
             
             laps = session.laps.pick_drivers(driver)
             
+            # Get actual grid position from session results
+            driver_result = session.results[session.results['Abbreviation'] == driver]
+            if not driver_result.empty and pd.notna(driver_result.iloc[0]['GridPosition']):
+                start_pos = int(driver_result.iloc[0]['GridPosition'])
+            else:
+                start_pos = int(laps.iloc[0]['Position'])
+            
             result = f"📊 Position Changes - {driver} ({gp} {year}):\n\n"
-            result += f"Starting Position: {int(laps.iloc[0]['Position'])}\n"
-            result += f"Finishing Position: {int(laps.iloc[-1]['Position'])}\n\n"
+            result += f"Starting Position: P{start_pos}\n"
+            result += f"Finishing Position: P{int(laps.iloc[-1]['Position'])}\n\n"
             
             result += "Lap-by-lap positions:\n"
             for idx, lap in laps.iterrows():
@@ -1549,21 +1614,35 @@ if FASTF1_AVAILABLE:
     def get_driver_info(year: int, gp: str, driver: str) -> str:
         """Get detailed driver information (number, team, headshot, etc.)."""
         try:
+            DRIVER_COUNTRIES = {
+                'VER': 'NED', 'HAM': 'GBR', 'NOR': 'GBR', 'LEC': 'MON',
+                'ANT': 'ITA', 'RUS': 'GBR', 'PIA': 'AUS', 'BEA': 'GBR',
+                'GAS': 'FRA', 'LAW': 'NZL', 'HAD': 'FRA', 'SAI': 'ESP',
+                'ALO': 'ESP', 'OCO': 'FRA', 'BOT': 'FIN', 'ALB': 'THA',
+                'HUL': 'GER', 'STR': 'CAN', 'COL': 'ARG', 'LIN': 'GBR',
+                'PER': 'MEX',
+            }
+
             session = fastf1.get_session(year, gp, 'R')
             session.load(telemetry=False)
-            
+
             driver_result = session.get_driver(driver)
-            
+
+            country = driver_result.get('CountryCode', '')
+            if not country or pd.isna(country):
+                abbr = driver_result.get('Abbreviation', driver)
+                country = DRIVER_COUNTRIES.get(abbr, 'N/A')
+
             result = f"👤 Driver Info - {driver}:\n\n"
             result += f"Full Name: {driver_result['FullName']}\n"
             result += f"Number: {driver_result['DriverNumber']}\n"
             result += f"Team: {driver_result['TeamName']}\n"
-            result += f"Country: {driver_result['CountryCode']}\n"
+            result += f"Country: {country}\n"
             result += f"Abbreviation: {driver_result['Abbreviation']}\n"
-            
+
             if pd.notna(driver_result.get('HeadshotUrl')):
                 result += f"Headshot: {driver_result['HeadshotUrl']}\n"
-            
+
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -1612,7 +1691,7 @@ if FASTF1_AVAILABLE:
             
             for drv in drivers:
                 fastest = s.laps.pick_drivers(drv).pick_fastest()
-                if pd.notna(fastest['SpeedST']):
+                if fastest is not None and pd.notna(fastest['SpeedST']):
                     speed_data.append({
                         'Driver': drv,
                         'Team': fastest['Team'],
@@ -1631,7 +1710,7 @@ if FASTF1_AVAILABLE:
             return f"Error: {str(e)}"
     
     @mcp.tool()
-    def analyze_drs_usage(year: int, gp: str, driver: str, session: str = 'Q') -> str:
+    def analyze_drs_usage(year: int, gp: str, driver: str, session: str = 'R') -> str:
         """Analyze DRS usage patterns for a driver's fastest lap."""
         try:
             s = fastf1.get_session(year, gp, session)
@@ -1727,8 +1806,11 @@ if FASTF1_AVAILABLE:
             
             results = session.results
             
-            # Filter for DNFs (Status not 'Finished')
-            dnfs = results[results['Status'] != 'Finished']
+            # Filter for actual retirements/DNFs (not lapped finishers)
+            retirement_statuses = ['Retired', 'DNF', 'DNS', 'DSQ', 'Accident', 'Collision',
+                                   'Engine', 'Gearbox', 'Hydraulics', 'Brakes', 'Mechanical',
+                                   'Electrical', 'Spun off', 'Damage', 'Withdrew', 'Disqualified']
+            dnfs = results[results['Status'].str.contains('|'.join(retirement_statuses), case=False, na=False)]
             
             if len(dnfs) == 0:
                 return "All drivers finished the race!"
@@ -1762,16 +1844,26 @@ if FASTF1_AVAILABLE:
             fastest_laps = []
             for drv in drivers:
                 lap = s.laps.pick_drivers(drv).pick_fastest()
-                fastest_laps.append(lap)
-            
-            from fastf1.core import Laps
-            all_fastest = Laps(fastest_laps)
-            
+                if lap is not None:
+                    fastest_laps.append(lap)
+
+            if not fastest_laps:
+                return f"No valid lap data found for {gp} {year} {session}."
+
+            all_fastest = pd.DataFrame(fastest_laps)
+
             result = f"⚡ Fastest Sectors - {gp} {year} {session}:\n\n"
-            
+
             for i in [1, 2, 3]:
                 sector_col = f'Sector{i}Time'
-                fastest_sector = all_fastest.sort_values(sector_col).iloc[0]
+                if sector_col not in all_fastest.columns:
+                    result += f"Sector {i}: No data available\n"
+                    continue
+                valid = all_fastest[all_fastest[sector_col].notna()]
+                if valid.empty:
+                    result += f"Sector {i}: No data available\n"
+                    continue
+                fastest_sector = valid.sort_values(sector_col).iloc[0]
                 driver = fastest_sector['Driver']
                 time = fastest_sector[sector_col].total_seconds()
                 result += f"Sector {i}: {driver} - {time:.3f}s\n"
@@ -1827,28 +1919,35 @@ if FASTF1_AVAILABLE:
             session.load()
             
             q1, q2, q3 = session.laps.split_qualifying_sessions()
-            
+
+            # Use session results for complete driver list (covers drivers with no lap times)
+            all_drivers = set(session.results['Abbreviation'].dropna().tolist())
+            q1_drivers = set(pd.unique(q1['Driver'])) if q1 is not None and len(q1) > 0 else set()
+            q2_drivers = set(pd.unique(q2['Driver'])) if q2 is not None and len(q2) > 0 else set()
+            q3_drivers = set(pd.unique(q3['Driver'])) if q3 is not None and len(q3) > 0 else set()
+
+            # Drivers in results but missing from lap data belong to Q1 (they entered but may not have set a time)
+            missing_from_laps = all_drivers - q1_drivers - q2_drivers - q3_drivers
+            q1_drivers = q1_drivers | missing_from_laps
+
             result = f"🏁 Qualifying Progression - {gp} {year}:\n\n"
-            
+
             # Q3 participants
-            if q3 is not None:
-                q3_drivers = pd.unique(q3['Driver'])
-                result += f"Q3 (Top 10): {', '.join(q3_drivers)}\n\n"
-            
+            if q3_drivers:
+                result += f"Q3 (Top 10): {', '.join(sorted(q3_drivers))}\n\n"
+
             # Q2 eliminated
-            if q2 is not None:
-                q2_drivers = pd.unique(q2['Driver'])
-                if q3 is not None:
-                    eliminated_q2 = [d for d in q2_drivers if d not in q3_drivers]
+            if q2_drivers:
+                eliminated_q2 = sorted(q2_drivers - q3_drivers)
+                if eliminated_q2:
                     result += f"Eliminated in Q2 (P11-15): {', '.join(eliminated_q2)}\n\n"
-            
+
             # Q1 eliminated
-            if q1 is not None:
-                q1_drivers = pd.unique(q1['Driver'])
-                if q2 is not None:
-                    eliminated_q1 = [d for d in q1_drivers if d not in q2_drivers]
+            if q1_drivers:
+                eliminated_q1 = sorted(q1_drivers - q2_drivers)
+                if eliminated_q1:
                     result += f"Eliminated in Q1 (P16-20): {', '.join(eliminated_q1)}\n"
-            
+
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -1959,26 +2058,48 @@ if FASTF1_AVAILABLE:
             session = fastf1.get_session(year, gp, 'R')
             session.load()
             
-            laps = session.laps
-            pit_laps = laps[laps['PitInTime'].notna()].copy()
-            
+            all_laps = session.laps
+            pit_laps = all_laps[all_laps['PitInTime'].notna()].copy()
+
             if len(pit_laps) == 0:
                 return "No pit stops found"
-            
-            # Calculate pit stop duration
-            pit_laps['PitDuration'] = (pit_laps['PitOutTime'] - pit_laps['PitInTime']).dt.total_seconds()
-            
-            # Sort by duration
-            fastest_stops = pit_laps.nsmallest(top_n, 'PitDuration')
-            
+
+            # Calculate pit stop duration — try multiple approaches
+            durations = []
+            for idx, lap in pit_laps.iterrows():
+                duration = None
+                # Try 1: PitStopDuration column
+                if 'PitStopDuration' in lap.index and pd.notna(lap.get('PitStopDuration')):
+                    dur_val = lap['PitStopDuration']
+                    duration = dur_val.total_seconds() if hasattr(dur_val, 'total_seconds') else float(dur_val)
+                # Try 2: PitOutTime on same row
+                if (duration is None or pd.isna(duration)) and pd.notna(lap.get('PitOutTime')) and pd.notna(lap['PitInTime']):
+                    duration = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
+                # Try 3: PitOutTime on the next lap for this driver
+                if duration is None or pd.isna(duration):
+                    drv_laps = all_laps[all_laps['Driver'] == lap['Driver']].sort_values('LapNumber')
+                    next_laps = drv_laps[drv_laps['LapNumber'] > lap['LapNumber']]
+                    if len(next_laps) > 0:
+                        nxt = next_laps.iloc[0]
+                        if pd.notna(nxt.get('PitOutTime')):
+                            duration = (nxt['PitOutTime'] - lap['PitInTime']).total_seconds()
+                durations.append(duration)
+            pit_laps['PitDuration'] = durations
+
+            # Drop stops where we couldn't compute duration, then sort
+            valid_stops = pit_laps[pit_laps['PitDuration'].notna()]
+            if len(valid_stops) == 0:
+                return "No pit stop durations available"
+            fastest_stops = valid_stops.nsmallest(top_n, 'PitDuration')
+
             result = f"⚡ Top {top_n} Fastest Pit Stops - {gp} {year}:\n\n"
-            
+
             for i, (idx, lap) in enumerate(fastest_stops.iterrows(), 1):
                 driver = lap['Driver']
                 duration = lap['PitDuration']
                 lap_num = int(lap['LapNumber'])
                 result += f"{i}. {driver} - Lap {lap_num}: {duration:.2f}s\n"
-            
+
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -2017,7 +2138,10 @@ if FASTF1_AVAILABLE:
 
             if len(fresh_laps) > 0 and len(used_laps) > 0:
                 delta = (used_avg - fresh_avg).total_seconds()
-                result += f"Degradation: +{delta:.3f}s (late stint slower)\n"
+                if delta > 0:
+                    result += f"Degradation: +{delta:.3f}s (late stint slower)\n"
+                else:
+                    result += f"Degradation: {delta:.3f}s (late stint faster)\n"
             
             return result
         except Exception as e:
@@ -2036,8 +2160,12 @@ if FASTF1_AVAILABLE:
             
             messages = session.race_control_messages
             
-            # Filter for penalty-related messages
-            penalties = messages[messages['Message'].str.contains('PENALTY|penalty|time|grid', case=False, na=False)]
+            # Filter for penalty-related messages, excluding blue flags
+            is_penalty = messages['Message'].str.contains('PENALTY|INVESTIGATION|UNDER INVESTIGATION|TIME PENALTY|DRIVE THROUGH|STOP.GO|BLACK AND WHITE|DISQUALIFIED', case=False, na=False)
+            is_blue = messages['Message'].str.contains('BLUE FLAG', case=False, na=False)
+            if 'Flag' in messages.columns:
+                is_blue = is_blue | messages['Flag'].str.contains('BLUE', case=False, na=False)
+            penalties = messages[is_penalty & ~is_blue]
             
             if len(penalties) == 0:
                 return "No penalties issued"
@@ -2066,18 +2194,22 @@ if FASTF1_AVAILABLE:
             
             result = f"🏆 Race Winners History - {gp} (Last {years} years):\n\n"
             
+            # Resolve circuit ID once using mapping, with API fallback
+            mapped_circuit_id = _resolve_circuit_id(gp)
+            
             for year in range(current_year, start_year - 1, -1):
                 try:
-                    url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
-                    response = requests.get(url)
-                    circuits = response.json()['MRData']['CircuitTable']['Circuits']
+                    circuit_id = mapped_circuit_id
                     
-                    # Find circuit
-                    circuit_id = None
-                    for circuit in circuits:
-                        if gp.lower() in circuit['circuitName'].lower() or gp.lower() in circuit['Location']['locality'].lower():
-                            circuit_id = circuit['circuitId']
-                            break
+                    if not circuit_id:
+                        url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
+                        response = requests.get(url)
+                        circuits = response.json()['MRData']['CircuitTable']['Circuits']
+                        
+                        for circuit in circuits:
+                            if gp.lower() in circuit['circuitName'].lower() or gp.lower() in circuit['Location']['locality'].lower():
+                                circuit_id = circuit['circuitId']
+                                break
                     
                     if not circuit_id:
                         continue
@@ -2113,9 +2245,24 @@ if FASTF1_AVAILABLE:
             
             laps = session.laps.pick_drivers(driver)
             
+            # Get actual grid position from session results
+            driver_result = session.results[session.results['Abbreviation'] == driver]
+            if not driver_result.empty and pd.notna(driver_result.iloc[0]['GridPosition']):
+                grid_pos = int(driver_result.iloc[0]['GridPosition'])
+            else:
+                grid_pos = int(laps.iloc[0]['Position']) if len(laps) > 0 else None
+            
             result = f"🏁 Overtakes - {driver} ({gp} {year}):\n\n"
+            if grid_pos is not None:
+                result += f"Grid Position: P{grid_pos}\n"
             
             overtakes = []
+            # Check Lap 1 position vs grid position
+            if len(laps) > 0 and grid_pos is not None:
+                lap1_pos = laps.iloc[0]['Position']
+                if pd.notna(lap1_pos) and lap1_pos < grid_pos:
+                    overtakes.append((1, grid_pos, lap1_pos, int(grid_pos - lap1_pos)))
+            
             for i in range(1, len(laps)):
                 prev_pos = laps.iloc[i-1]['Position']
                 curr_pos = laps.iloc[i]['Position']
@@ -2234,6 +2381,15 @@ if FASTF1_AVAILABLE:
             s.load(telemetry=False)
             
             team_laps = s.laps.pick_teams(team)
+            
+            # Fuzzy match: if exact team name fails, try substring match
+            if team_laps.empty:
+                all_teams = pd.unique(s.laps['Team'])
+                matched = [t for t in all_teams if team.lower() in t.lower()]
+                if matched:
+                    team_laps = s.laps.pick_teams(matched[0])
+                    team = matched[0]
+            
             drivers = pd.unique(team_laps['Driver'])
             
             if len(drivers) != 2:
@@ -2281,16 +2437,20 @@ if FASTF1_AVAILABLE:
             # For now, we'll get recent fastest lap from last completed season
             year = 2024
             
-            url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
-            response = requests.get(url)
-            circuits = response.json()['MRData']['CircuitTable']['Circuits']
+            # Try direct mapping first, then fall back to API search
+            circuit_id = _resolve_circuit_id(gp)
+            circuit_name = gp
             
-            circuit_id = None
-            for circuit in circuits:
-                if gp.lower() in circuit['circuitName'].lower() or gp.lower() in circuit['Location']['locality'].lower():
-                    circuit_id = circuit['circuitId']
-                    circuit_name = circuit['circuitName']
-                    break
+            if not circuit_id:
+                url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
+                response = requests.get(url)
+                circuits = response.json()['MRData']['CircuitTable']['Circuits']
+                
+                for circuit in circuits:
+                    if gp.lower() in circuit['circuitName'].lower() or gp.lower() in circuit['Location']['locality'].lower():
+                        circuit_id = circuit['circuitId']
+                        circuit_name = circuit['circuitName']
+                        break
             
             if not circuit_id:
                 return f"Circuit '{gp}' not found"
