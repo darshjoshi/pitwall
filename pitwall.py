@@ -723,37 +723,6 @@ def get_driver_comparison(driver_a: str, driver_b: str, year: int = 2026,
 
 
 # =============================================================================
-# CORE TOOLS — Team Radio
-# =============================================================================
-
-@mcp.tool()
-def get_team_radio(year: int = 2026, race: str = "", session_type: str = "Race") -> str:
-    """Get team radio clip URLs from a session.
-
-    Args:
-        year: Season year
-        race: Race name (partial match)
-        session_type: Session type
-    """
-    try:
-        path, race_name = _find_session(year, race, session_type)
-        if not path:
-            return "No session found"
-        dm = _driver_map(path)
-        captures = _get_keyframe(path, "TeamRadio").get("Captures", [])
-        cl = captures if isinstance(captures, list) else list(captures.values())
-        result = f"=== {race_name} {year} — Team Radio ({len(cl)} clips) ===\n\n"
-        for c in cl:
-            if isinstance(c, dict):
-                num = str(c.get("RacingNumber", "?"))
-                d = dm.get(num, {"tla": f"#{num}"})
-                result += f"  {d['tla']:>3} — https://livetiming.formula1.com/static/{path}{c.get('Path', '')}\n"
-        return result
-    except Exception as e:
-        return f"Error: {e}"
-
-
-# =============================================================================
 # CORE TOOLS — Historical (Jolpica-F1, 1950-present)
 # =============================================================================
 
@@ -1285,33 +1254,6 @@ if FASTF1_AVAILABLE:
             return f"Strategy Error: {e}"
     
     # ==============================================================================
-    # MODULE 6: AUDIO & TEAM RADIO
-    # ==============================================================================
-    
-    @mcp.tool()
-    def get_driver_radio(year: int, gp: str, driver_number: int) -> str:
-        """Get team radio audio links for a specific driver number via OpenF1 API."""
-        try:
-            # Fetch Session Key
-            url_s = f"https://api.openf1.org/v1/sessions?year={year}&country_name={gp}&session_name=Race"
-            s_data = requests.get(url_s).json()
-            if not s_data: return "Session not found in OpenF1."
-            session_key = s_data[0]['session_key']
-    
-            # Fetch Radio
-            url_r = f"https://api.openf1.org/v1/team_radio?session_key={session_key}&driver_number={driver_number}"
-            r_data = requests.get(url_r).json()
-
-            if not r_data:
-                return f"No radio clips found for driver #{driver_number} in this session. OpenF1 may not have data for {year} yet."
-
-            transcript = f"📻 Last 5 Radio Messages (Driver #{driver_number}):\n"
-            for msg in r_data[-5:]:
-                transcript += f"- {msg['recording_url']}\n"
-            return transcript
-        except Exception as e:
-            return f"Radio data unavailable: {e}. OpenF1 may not have data for {year} yet."
-    
     # ==============================================================================
     # MODULE 7: PIT STOPS & STRATEGY
     # ==============================================================================
