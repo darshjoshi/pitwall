@@ -2584,7 +2584,7 @@ if FASTF1_AVAILABLE:
         """Get current live F1 session status and timing information."""
         try:
             # Connect to live timing
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = "🔴 LIVE F1 Session Status:\n\n"
             
@@ -2603,7 +2603,7 @@ if FASTF1_AVAILABLE:
     def get_live_positions() -> str:
         """Get current live race positions and gaps."""
         try:
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = "🏁 LIVE Race Positions:\n\n"
             
@@ -2631,7 +2631,7 @@ if FASTF1_AVAILABLE:
     def get_live_lap_times() -> str:
         """Get latest lap times from live session."""
         try:
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = "⏱️ LIVE Lap Times:\n\n"
             
@@ -2660,7 +2660,7 @@ if FASTF1_AVAILABLE:
     def get_live_sector_times(driver: str) -> str:
         """Get live sector times for a specific driver."""
         try:
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = f"🟣 LIVE Sector Times - {driver}:\n\n"
             
@@ -2698,7 +2698,7 @@ if FASTF1_AVAILABLE:
     def get_live_telemetry(driver: str) -> str:
         """Get live telemetry data for a specific driver (speed, throttle, etc)."""
         try:
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = f"📊 LIVE Telemetry - {driver}:\n\n"
             
@@ -2730,7 +2730,7 @@ if FASTF1_AVAILABLE:
     def get_live_weather() -> str:
         """Get current live weather conditions at the track."""
         try:
-            livedata = fastf1.livetiming.LiveTimingData()
+            livedata = fastf1.livetiming.data.LiveTimingData()
             
             result = "🌤️ LIVE Weather Conditions:\n\n"
             
@@ -2749,8 +2749,6 @@ if FASTF1_AVAILABLE:
             return result
         except Exception as e:
             return f"No live session active or error: {e}"
-        except Exception as e:
-            return f"Error: {str(e)}"
 
 # =============================================================================
 # ENTRY POINT
