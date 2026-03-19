@@ -9,7 +9,7 @@ import base64
 import json
 import zlib
 
-from f1livetiming.topics import CAR_DATA_CHANNELS
+from topics import CAR_DATA_CHANNELS
 
 
 def decompress_z_data(encoded: str) -> dict:

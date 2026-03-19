@@ -217,7 +217,7 @@ def list_seasons() -> str:
     """List all available F1 seasons (2018-present)."""
     try:
         lines = []
-        for year in range(2018, 2027):
+        for year in range(2018, datetime.now().year + 1):
             try:
                 n = len(_get_json(f"{year}/Index.json").get("Meetings", []))
                 lines.append(f"  {year}: {n} events")
@@ -1131,11 +1131,7 @@ if FASTF1_AVAILABLE:
                 mimeType="image/png"
             )
         except Exception as e:
-            return ImageContent(
-                type="image",
-                data="",
-                mimeType="image/png"
-            )
+            return _error_image(e)
     
     @mcp.tool()
     def plot_gear_shifts(year: int, gp: str, driver: str, session: str = 'Q') -> ImageContent:
@@ -1316,7 +1312,7 @@ if FASTF1_AVAILABLE:
             else:
                 url = f"https://api.jolpi.ca/ergast/f1/{year}/driverStandings.json"
             
-            response = requests.get(url)
+            response = requests.get(url, timeout=15)
             data = response.json()
             standings = data['MRData']['StandingsTable']['StandingsLists'][0]['DriverStandings']
             
@@ -1345,7 +1341,7 @@ if FASTF1_AVAILABLE:
             else:
                 url = f"https://api.jolpi.ca/ergast/f1/{year}/constructorStandings.json"
             
-            response = requests.get(url)
+            response = requests.get(url, timeout=15)
             data = response.json()
             standings = data['MRData']['StandingsTable']['StandingsLists'][0]['ConstructorStandings']
             
@@ -1393,9 +1389,14 @@ if FASTF1_AVAILABLE:
             
             lap1 = s.laps.pick_drivers(driver1).pick_fastest()
             lap2 = s.laps.pick_drivers(driver2).pick_fastest()
-            
+
+            if lap1 is None or (hasattr(lap1, 'empty') and lap1.empty):
+                return f"No lap data for {driver1} in {session} session"
+            if lap2 is None or (hasattr(lap2, 'empty') and lap2.empty):
+                return f"No lap data for {driver2} in {session} session"
+
             result = f"⏱️ Sector Comparison - {driver1} vs {driver2}:\n\n"
-            
+
             sectors = ['Sector1Time', 'Sector2Time', 'Sector3Time']
             for i, sector in enumerate(sectors, 1):
                 time1 = lap1[sector].total_seconds()
@@ -1848,7 +1849,7 @@ if FASTF1_AVAILABLE:
                         change = grid - finish_int
                         change_str = f"+{change}" if change > 0 else str(change)
                         result += f"{name}: P{grid} → P{finish} ({change_str})\n"
-                    except:
+                    except (ValueError, TypeError):
                         result += f"{name}: P{grid} → {finish}\n"
                 else:
                     result += f"{name}: P{grid} → {finish}\n"
@@ -1949,8 +1950,10 @@ if FASTF1_AVAILABLE:
             s.load()
             
             lap = s.laps.pick_drivers(driver).pick_fastest()
+            if lap is None or (hasattr(lap, 'empty') and lap.empty):
+                return f"No lap data for {driver} in {session} session"
             tel = lap.get_car_data()
-            
+
             # Brake is boolean: True when braking
             brake_points = tel[tel['Brake'] == True]
             total_brake_time = len(brake_points) / len(tel) * 100 if len(tel) > 0 else 0
@@ -1982,8 +1985,10 @@ if FASTF1_AVAILABLE:
             s.load()
             
             lap = s.laps.pick_drivers(driver).pick_fastest()
+            if lap is None or (hasattr(lap, 'empty') and lap.empty):
+                return f"No lap data for {driver} in {session} session"
             tel = lap.get_car_data()
-            
+
             avg_rpm = tel['RPM'].mean()
             max_rpm = tel['RPM'].max()
             min_rpm = tel['RPM'].min()
@@ -2140,7 +2145,7 @@ if FASTF1_AVAILABLE:
     def get_race_winners_history(gp: str, years: int = 5) -> str:
         """Get race winners for a specific GP over the last N years."""
         try:
-            current_year = 2025
+            current_year = datetime.now().year
             start_year = current_year - years + 1
             
             result = f"🏆 Race Winners History - {gp} (Last {years} years):\n\n"
@@ -2154,7 +2159,7 @@ if FASTF1_AVAILABLE:
                     
                     if not circuit_id:
                         url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
-                        response = requests.get(url)
+                        response = requests.get(url, timeout=15)
                         circuits = response.json()['MRData']['CircuitTable']['Circuits']
                         
                         for circuit in circuits:
@@ -2167,7 +2172,7 @@ if FASTF1_AVAILABLE:
                     
                     # Get results
                     url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits/{circuit_id}/results/1.json"
-                    response = requests.get(url)
+                    response = requests.get(url, timeout=15)
                     data = response.json()
                     
                     if data['MRData']['RaceTable']['Races']:
@@ -2176,7 +2181,7 @@ if FASTF1_AVAILABLE:
                         driver_name = f"{winner['Driver']['givenName']} {winner['Driver']['familyName']}"
                         team = winner['Constructor']['name']
                         result += f"{year}: {driver_name} ({team})\n"
-                except:
+                except Exception:
                     continue
             
             return result
@@ -2388,9 +2393,8 @@ if FASTF1_AVAILABLE:
     def get_track_record(gp: str) -> str:
         """Get the all-time lap record for a specific circuit (via Ergast)."""
         try:
-            # This would need to query multiple years to find the fastest
-            # For now, we'll get recent fastest lap from last completed season
-            year = 2024
+            # Use last completed season as default (current season may be in progress)
+            year = datetime.now().year - 1
             
             # Try direct mapping first, then fall back to API search
             circuit_id = _resolve_circuit_id(gp)
@@ -2398,7 +2402,7 @@ if FASTF1_AVAILABLE:
             
             if not circuit_id:
                 url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits.json"
-                response = requests.get(url)
+                response = requests.get(url, timeout=15)
                 circuits = response.json()['MRData']['CircuitTable']['Circuits']
                 
                 for circuit in circuits:
@@ -2412,7 +2416,7 @@ if FASTF1_AVAILABLE:
             
             # Get fastest lap
             url = f"https://api.jolpi.ca/ergast/f1/{year}/circuits/{circuit_id}/fastest/1/results.json"
-            response = requests.get(url)
+            response = requests.get(url, timeout=15)
             data = response.json()
             
             if data['MRData']['RaceTable']['Races']:
