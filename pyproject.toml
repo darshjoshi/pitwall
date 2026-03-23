@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "f1pitwall"
-version = "1.0.3"
+version = "1.0.4"
 description = "F1 MCP server for Claude — 67 tools for telemetry, strategy, and 75 years of history. pip install f1pitwall[full] for plots."
 readme = "README.md"
 license = "MIT"
