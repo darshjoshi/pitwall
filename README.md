@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-standings.png" alt="Pitwall Demo" width="600">
+  <img src="assets/ver_vs_nor_abu_dhabi_2024_quali.png" alt="Verstappen vs Norris — Abu Dhabi 2024 Qualifying Speed Trace" width="700">
 </p>
 
 ---
