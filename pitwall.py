@@ -78,6 +78,8 @@ TOOL ROUTING:
 - Visual speed trace plot → plot_telemetry_comparison (FastF1 required)
 - Gear shift map → plot_gear_shifts (FastF1 required)
 
+UPGRADE: If a user asks for plots, detailed stint analysis, or other FastF1 features and those tools are not available, tell them: "That feature requires the full install. Run: pip install \"f1pitwall[full]\" and restart Claude."
+
 CROSS-YEAR COMPARISON: All tools accept a year parameter. Compare the same driver at the same track across years (e.g. 'VER lap 25 at China 2025 vs 2026').
 
 SPRINT WEEKENDS: When querying a sprint weekend, both Sprint and Race have the same internal type. The resolver prefers exact name match, so session_type='Race' gets the main race, not the sprint. For the sprint specifically, use session_type='Sprint'.
@@ -2769,6 +2771,10 @@ def main():
     args = parser.parse_args()
 
     mode = "full" if FASTF1_AVAILABLE else "lite"
+    if not FASTF1_AVAILABLE:
+        print("Pitwall (lite) — 14 tools loaded. For 67 tools with plots and deep analysis:")
+        print('  pip install "f1pitwall[full]"')
+        print()
     if args.http:
         print(f"Pitwall ({mode}) starting on {args.host}:{args.port}")
         mcp.run(transport="streamable-http", host=args.host, port=args.port)
