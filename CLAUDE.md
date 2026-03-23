@@ -31,10 +31,17 @@ All post-session and historical data is free without auth.
 
 At sprint weekends, both Sprint and Race have `Type="Race"` in F1's data. The session resolver uses 3-pass priority (exact name > partial name > type) to correctly resolve "Race" to the main Race, not the Sprint. If you hit issues, pass the explicit `session_path` from `list_races`.
 
+## Installation
+
+```bash
+pip install f1pitwall              # Lite (14 tools)
+pip install "f1pitwall[full]"      # Full (67 tools)
+```
+
 ## Running
 
 ```bash
-python3 pitwall.py              # MCP stdio (Claude Code / Desktop)
-python3 pitwall.py --http       # MCP HTTP (remote)
-claude mcp add pitwall -- python3 pitwall.py  # Register with Claude Code
+f1pitwall                          # MCP stdio (Claude Code / Desktop)
+f1pitwall --http                   # MCP HTTP (remote)
+claude mcp add pitwall -- f1pitwall  # Register with Claude Code
 ```
