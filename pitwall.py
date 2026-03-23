@@ -789,7 +789,8 @@ def get_championship_standings(year: int = 0, standings_type: str = "driver") ->
             result = f"=== {yr} Constructor Championship ===\n\n"
             for e in entries:
                 c = e.get("Constructor", {})
-                result += f"P{e['position']:>2} {c.get('name','?'):25s} Pts: {e['points']:>6} Wins: {e.get('wins','0')}\n"
+                pos = e.get("position", e.get("positionText", "?"))
+                result += f"P{pos:>2} {c.get('name','?'):25s} Pts: {e.get('points','0'):>6} Wins: {e.get('wins','0')}\n"
         else:
             entries = s.get("DriverStandings", [])
             result = f"=== {yr} Driver Championship ===\n\n"
@@ -797,7 +798,8 @@ def get_championship_standings(year: int = 0, standings_type: str = "driver") ->
                 d = e.get("Driver", {})
                 c = e.get("Constructors", [{}])[0] if e.get("Constructors") else {}
                 name = f"{d.get('givenName','')} {d.get('familyName','')}"
-                result += f"P{e['position']:>2} {name:25s} ({c.get('name','?'):15s}) Pts: {e['points']:>6} Wins: {e.get('wins','0')}\n"
+                pos = e.get("position", e.get("positionText", "?"))
+                result += f"P{pos:>2} {name:25s} ({c.get('name','?'):15s}) Pts: {e.get('points','0'):>6} Wins: {e.get('wins','0')}\n"
         return result
     except Exception as e:
         return f"Error: {e}"
