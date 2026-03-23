@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/ver_vs_nor_abu_dhabi_2024_quali.png" alt="Verstappen vs Norris — Abu Dhabi 2024 Qualifying Speed Trace" width="700">
+  <img src="https://raw.githubusercontent.com/darshjoshi/pitwall/main/assets/ver_vs_nor_abu_dhabi_2024_quali.png" alt="Verstappen vs Norris — Abu Dhabi 2024 Qualifying Speed Trace" width="700">
 </p>
 
 ---

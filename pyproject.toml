@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "f1pitwall"
-version = "1.0.0"
+version = "1.0.1"
 description = "Turn Claude into your F1 race engineer — 67 MCP tools for telemetry, strategy, and 75 years of race history"
 readme = "README.md"
 license = "MIT"
