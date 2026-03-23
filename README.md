@@ -6,8 +6,10 @@
 </p>
 
 <p align="center">
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python 3.10+"></a>
+  <a href="https://pypi.org/project/f1pitwall/"><img src="https://img.shields.io/pypi/v/f1pitwall?color=orange&label=PyPI" alt="PyPI"></a>
+  <a href="https://pypi.org/project/f1pitwall/"><img src="https://img.shields.io/pypi/dm/f1pitwall?color=blue&label=Downloads" alt="Downloads"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Compatible-purple.svg" alt="MCP Compatible"></a>
   <a href="https://github.com/darshjoshi/pitwall/stargazers"><img src="https://img.shields.io/github/stars/darshjoshi/pitwall?style=social" alt="GitHub Stars"></a>
 </p>
