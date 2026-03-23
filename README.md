@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.darshjoshi/pitwall -->
 <h1 align="center">Pitwall</h1>
 
 <p align="center">
