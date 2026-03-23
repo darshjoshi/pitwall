@@ -21,14 +21,25 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/darshjoshi/pitwall.git && cd pitwall
-pip install "mcp[cli]" requests
-claude mcp add pitwall -- python3 $(pwd)/pitwall.py
+pip install f1pitwall
+claude mcp add pitwall -- f1pitwall
 ```
 
 Then ask Claude: *"Who won the 2025 Australian GP?"*
 
-> Want visual plots and deep analysis? Install the full suite: `pip install -r requirements-full.txt`
+> Want visual plots and deep analysis? `pip install "f1pitwall[full]"`
+
+<details>
+<summary><strong>Install from source instead</strong></summary>
+
+```bash
+git clone https://github.com/darshjoshi/pitwall.git && cd pitwall
+pip install "mcp[cli]" requests        # lite
+pip install -r requirements-full.txt   # full
+claude mcp add pitwall -- python3 $(pwd)/pitwall.py
+```
+
+</details>
 
 ---
 

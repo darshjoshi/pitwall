@@ -2758,7 +2758,9 @@ if FASTF1_AVAILABLE:
 # ENTRY POINT
 # =============================================================================
 
-if __name__ == "__main__":
+
+def main():
+    """Entry point for the Pitwall MCP server (used by console_scripts and __main__)."""
     import argparse
     parser = argparse.ArgumentParser(description="Pitwall — F1 MCP Server")
     parser.add_argument("--http", action="store_true", help="Run as HTTP server")
@@ -2773,3 +2775,7 @@ if __name__ == "__main__":
     else:
         print(f"Pitwall ({mode}) starting (stdio)")
         mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
