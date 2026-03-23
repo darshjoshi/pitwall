@@ -1,35 +1,157 @@
-# Pitwall
+<h1 align="center">Pitwall</h1>
 
-**The F1 data command center for Claude.** 69 tools covering race results, lap-by-lap telemetry, tyre strategy, pit stops, weather, race control, driver comparisons, visual plots, and historical data back to 1950.
+<p align="center">
+  <strong>Turn Claude into your F1 race engineer.</strong><br>
+  Real telemetry. Real strategy data. Real-time during races. 75 years of history.
+</p>
 
-Works with **Claude Desktop**, **Claude Code**, and any MCP-compatible client.
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python 3.10+"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Compatible-purple.svg" alt="MCP Compatible"></a>
+  <a href="https://github.com/darshjoshi/pitwall/stargazers"><img src="https://img.shields.io/github/stars/darshjoshi/pitwall?style=social" alt="GitHub Stars"></a>
+</p>
 
-![Pitwall Demo — Race Standings and Tyre Strategy](assets/demo-standings.png)
+<p align="center">
+  <img src="assets/demo-standings.png" alt="Pitwall Demo" width="600">
+</p>
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/darshjoshi/pitwall.git && cd pitwall
+pip install "mcp[cli]" requests
+claude mcp add pitwall -- python3 $(pwd)/pitwall.py
+```
+
+Then ask Claude: *"Who won the 2025 Australian GP?"*
+
+> Want visual plots and deep analysis? Install the full suite: `pip install -r requirements-full.txt`
+
+---
+
+## Why Pitwall?
+
+Claude knows F1 from training data — but it can't look up last week's race. It can't show you Verstappen's throttle trace through Turn 1. It doesn't know who pitted first or when the safety car came out.
+
+Pitwall connects Claude to **live F1 data**:
+
+- **Real data, not hallucinations** — actual timing feeds from formula1.com
+- **Lap-level telemetry** — speed, RPM, throttle, brake, gear, DRS at 4Hz per car
+- **Visual plots** — speed trace comparisons, gear shift maps returned as images
+- **75 years of history** — every race result and championship since 1950
+- **Live during races** — real-time positions, gaps, weather, and race control
+- **Zero API keys** — all core data is free, no account needed
+
+---
+
+## What You Can Ask
+
+```
+"Who won the 2025 Australian GP?"           → Race results and classification
+"Verstappen's speed on lap 25 at Monaco"    → Lap telemetry at 4Hz
+"Plot Hamilton vs Norris speed trace"       → Visual speed comparison chart
+"Compare Ferrari's tyre strategy"           → Stint-by-stint breakdown
+"Who won the 1994 championship?"            → 75 years of history
+"When was the safety car at Silverstone?"   → Race control messages and flags
+```
+
+<details>
+<summary><strong>See all example questions</strong></summary>
+
+| Question | Tool Used |
+|----------|-----------|
+| "Who won the Chinese GP?" | `get_standings` |
+| "What was Verstappen's speed on lap 25?" | `get_telemetry` |
+| "Compare Hamilton vs Leclerc" | `get_driver_comparison` |
+| "What tyres did everyone use?" | `get_tyre_strategy` |
+| "Fastest pit stop at Australia 2025?" | `get_pit_stops` |
+| "When was the safety car?" | `get_race_control` |
+| "Was it raining during the race?" | `get_weather` |
+| "Top speeds at Monza 2024?" | `get_speed_traps` |
+| "Norris's lap times in the race" | `get_lap_times` |
+| "Who won the 2005 championship?" | `get_championship_standings` |
+| "Plot Verstappen vs Hamilton speed trace" | `plot_telemetry_comparison` |
+| "Show me the gear shift map at Monaco" | `plot_gear_shifts` |
+| "Who gained the most positions?" | `compare_grid_to_finish` |
+| "Overtakes in the race" | `detect_overtakes` |
+| "Compare Verstappen lap 5 vs lap 50" | `plot_multi_telemetry_comparison` |
+| "Ferrari head-to-head in qualifying" | `team_head_to_head` |
+| "Deleted laps in qualifying" | `get_deleted_laps` |
+| "Gap to leader throughout the race" | `get_gap_to_leader` |
+
+</details>
+
+---
+
+## Features
+
+**67 tools** across two modes. Pitwall auto-detects what's installed — no config changes needed.
+
+### Lite Mode (14 tools)
+
+`pip install "mcp[cli]" requests` — no heavy dependencies.
+
+Race results, lap times, telemetry, tyre strategy, pit stops, weather, race control, speed traps, driver comparison, and historical data back to 1950. Uses F1's free static archive and the Jolpica API.
+
+### Full Mode (67 tools)
+
+`pip install -r requirements-full.txt` — adds [FastF1](https://github.com/theOehrly/Fast-F1).
+
+Everything in Lite, plus:
+
+| Category | What You Get |
+|----------|-------------|
+| **Visual Plots** | Speed trace comparisons, gear shift maps, multi-lap telemetry overlays |
+| **Deep Telemetry** | Brake point analysis, RPM patterns, DRS usage, throttle traces |
+| **Advanced Strategy** | Stint degradation, compound comparisons, tire age performance |
+| **Race Intelligence** | Overtake detection, gap tracking, position changes, qualifying progression |
+| **Live Data** | Real-time positions, lap times, sector times, weather during active sessions |
+
+<details>
+<summary><strong>Full tool list (67 tools)</strong></summary>
+
+#### Lite Tools (always available)
+| Tool | Description |
+|------|-------------|
+| `list_seasons` | Available seasons (2018-present) |
+| `list_races` | Full season calendar with dates |
+| `get_race_info` | Session details and available data feeds |
+| `get_standings` | Race classification — positions, gaps, best laps, pits |
+| `get_lap_times` | Lap-by-lap times, filterable by driver and lap range |
+| `get_telemetry` | Speed, RPM, throttle, brake, gear, DRS for a specific lap |
+| `get_tyre_strategy` | Compound, stint length, new/used for every driver |
+| `get_pit_stops` | All pit stops sorted by fastest |
+| `get_race_control` | Flags, penalties, safety cars, investigations |
+| `get_weather` | Air/track temp, rain, humidity, wind |
+| `get_speed_traps` | Speed at 4 measurement points per driver |
+| `get_driver_comparison` | Head-to-head: position, pace, strategy, pit stops |
+| `get_historical_results` | Race results from 1950 to present |
+| `get_championship_standings` | Driver/constructor championships from 1950+ |
+
+#### FastF1 Tools (requires FastF1)
+| Category | Tools |
+|----------|-------|
+| **Visual Plots** | `plot_telemetry_comparison`, `plot_gear_shifts`, `plot_multi_telemetry_comparison`, `plot_driver_telemetry_comparison` |
+| **Telemetry Analysis** | `analyze_brake_points`, `analyze_rpm_data`, `analyze_drs_usage` |
+| **Lap Analysis** | `get_lap_times_fastf1`, `get_deleted_laps`, `analyze_lap_consistency`, `get_fastest_sectors`, `get_personal_best_laps`, `compare_sector_times` |
+| **Strategy** | `get_driver_tyre_detail`, `get_stint_analysis`, `compare_tire_compounds`, `compare_tire_age_performance`, `analyze_starting_tires`, `compare_strategies` |
+| **Race Analysis** | `get_race_results`, `get_sprint_results`, `get_session_summary`, `get_fastest_lap_data`, `detect_overtakes`, `compare_grid_to_finish`, `get_qualifying_progression` |
+| **Pit Stops** | `get_pit_stop_detail`, `get_fastest_pit_stops` |
+| **Driver & Team** | `get_driver_info`, `get_driver_standings`, `get_constructor_standings`, `team_head_to_head`, `get_team_laps`, `analyze_long_run_pace` |
+| **Track & Safety** | `get_circuit_info`, `get_track_status`, `get_track_record`, `get_race_control_messages`, `get_penalties`, `get_dnf_list` |
+| **Speed & Position** | `get_speed_trap_comparison`, `get_position_changes`, `get_gap_to_leader` |
+| **History** | `get_race_winners_history` |
+| **Live Data** | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
+| **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
+
+</details>
 
 ---
 
 ## Setup
-
-### Step 1: Clone and install
-
-```bash
-git clone https://github.com/darshjoshi/pitwall.git
-cd pitwall
-```
-
-**Choose your mode:**
-
-```bash
-# Lite (15 tools) — race results, telemetry, strategy, pit stops, weather, historical
-pip install "mcp[cli]" requests
-
-# Full (69 tools) — adds FastF1 visual plots, deep analysis, live data tools
-pip install -r requirements-full.txt
-```
-
-> Pitwall auto-detects what's installed. No FastF1? It starts with 15 tools. Install FastF1 later? Restart and you get 69. No config changes needed.
-
-### Step 2: Connect to Claude
 
 <details>
 <summary><strong>macOS</strong></summary>
@@ -108,55 +230,61 @@ claude mcp add pitwall -- python3 /absolute/path/to/pitwall.py
 ```
 </details>
 
-### Step 3: Restart and ask
+Restart Claude Code or Claude Desktop after setup. Works with any MCP-compatible client.
 
-Restart Claude Code or Claude Desktop. Then ask anything:
+### Optional: Beginner-Friendly Skill (Claude Desktop)
 
-> "Who won the 2026 Chinese GP?"
-> "What was Verstappen's speed on lap 25 at China?"
-> "Compare Hamilton vs Leclerc's tyre strategy"
-> "Who won the 2005 world championship?"
-
-### Optional: Upload the Skill (Claude Desktop)
-
-For beginner-friendly F1 explanations, upload `SKILL.md` as a skill in Claude Desktop:
-1. Open Claude Desktop → Settings → Skills → Upload
-2. Drag and drop `SKILL.md` from this repo
-3. Claude will now explain F1 jargon inline (DRS, undercut, compound, etc.)
+Upload `SKILL.md` as a skill in Claude Desktop (Settings → Skills → Upload). Claude will explain F1 jargon inline — DRS, undercut, compound, safety car, etc.
 
 ---
 
-## What You Can Ask
+## Data Sources
 
-| Question | Tool Used |
-|----------|-----------|
-| "Who won the Chinese GP?" | `get_standings` |
-| "What was Verstappen's speed on lap 25?" | `get_telemetry` |
-| "Compare Hamilton vs Leclerc at China 2026" | `get_driver_comparison` |
-| "What tyres did everyone use?" | `get_tyre_strategy` |
-| "Fastest pit stop at Australia 2025?" | `get_pit_stops` |
-| "When was the safety car?" | `get_race_control` |
-| "Was it raining during the race?" | `get_weather` |
-| "Top speeds at Monza 2024?" | `get_speed_traps` |
-| "Norris's lap times in the race" | `get_lap_times` |
-| "Who won the 2005 championship?" | `get_championship_standings` |
-| "Plot Verstappen vs Hamilton speed trace" | `plot_telemetry_comparison` |
-| "Show me the gear shift map at Monaco" | `plot_gear_shifts` |
-| "Who gained the most positions?" | `compare_grid_to_finish` |
-| "Overtakes in the race" | `detect_overtakes` |
+All core data is **free and requires no API keys**.
 
-![Pitwall Demo — Lap Telemetry](assets/demo-telemetry.png)
+| Source | Coverage | What it provides |
+|--------|----------|-----------------|
+| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | 2018-present | Telemetry, timing, strategy, pit stops, weather, race control |
+| [Jolpica-F1](https://api.jolpi.ca/ergast/f1/) | 1950-present | Historical results and championships |
+| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | 2018-present | Enhanced telemetry analysis and visual plots |
+| [F1 SignalR Core](https://livetiming.formula1.com/signalrcore) (optional) | Live only | Real-time race data during active sessions |
 
 ---
 
-## Live Race Data (Optional — F1 TV Required)
+## How It Works
 
-Pitwall includes a raw SignalR Core WebSocket client that connects directly to F1's live timing feed during races. Most data is free. Car telemetry and GPS positions require an F1 TV subscription.
+Pitwall reads from F1's publicly available static timing archive — the same data that powers the official F1 app. After each session ends (~30 minutes), F1 publishes 33 data feeds per session including full car telemetry (speed, RPM, throttle, brake, gear, DRS at ~4Hz per car), GPS positions, tyre data, pit stops, and race control messages.
 
-### What's free vs what needs F1 TV
+The telemetry tool (`get_telemetry`) correlates the timing stream with the car data stream to extract telemetry for a specific driver on a specific lap — something no other F1 MCP server does.
 
-| Data | Free (no account) | F1 TV subscription |
-|------|-------------------|-------------------|
+### Architecture
+
+```
+Claude ──MCP──> Pitwall ──HTTP──> livetiming.formula1.com/static/ (free)
+                       ──HTTP──> api.jolpi.ca/ergast/f1/ (free)
+                       ──lib──>  FastF1 (optional, local)
+                       ──WS───> SignalR Core (optional, live races)
+```
+
+### Running the Server
+
+```bash
+python3 pitwall.py              # MCP stdio (Claude Code / Claude Desktop)
+python3 pitwall.py --http       # MCP HTTP (remote / self-hosted)
+python3 pitwall.py --http --port 3000
+```
+
+---
+
+## Live Race Data
+
+Pitwall includes a raw SignalR Core WebSocket client for real-time data during active F1 sessions. Most data is free — car telemetry and GPS require an F1 TV Pro or Premium subscription.
+
+<details>
+<summary><strong>What's free vs what needs F1 TV</strong></summary>
+
+| Data | Free | F1 TV |
+|------|------|-------|
 | Race positions, gaps, lap times | Yes | Yes |
 | Race control, flags, penalties | Yes | Yes |
 | Weather, track status | Yes | Yes |
@@ -165,26 +293,27 @@ Pitwall includes a raw SignalR Core WebSocket client that connects directly to F
 | **Car telemetry** (speed, RPM, throttle, brake) | No | **Yes** |
 | **GPS positions** (X/Y/Z coordinates) | No | **Yes** |
 
-> **Important:** All of this data (including telemetry and GPS) becomes **free** in the static archive ~30 minutes after a session ends. F1 TV is only needed for live telemetry *during* a race.
+> All data (including telemetry and GPS) becomes **free** in the static archive ~30 minutes after a session ends.
 
-### Authenticating with F1 TV
+</details>
 
-If you have an F1 TV Access, Pro, or Premium subscription:
+<details>
+<summary><strong>Authentication setup</strong></summary>
 
 ```bash
 python3 auth_setup.py
 ```
 
-This opens a browser window where you log in with your F1 TV account. The auth token is saved locally to `~/.f1token` and `~/Library/Application Support/fastf1/f1auth.json`.
+This opens a browser for F1 TV login. The token is saved locally:
+- `<project_dir>/.f1token`
+- `~/Library/Application Support/fastf1/f1auth.json` (macOS)
 
-**Token details:**
-- It's a JWT (JSON Web Token) — not your password
-- Expires every ~4 days — re-run `python3 auth_setup.py` to refresh
-- Never uploaded anywhere — stays on your machine
-- Only used by the SignalR client for live sessions
-- Token stored at `~/.f1token` (macOS/Linux) or `%USERPROFILE%\.f1token` (Windows)
+Token expires every ~4 days. Re-run to refresh. Never uploaded anywhere.
 
-### Using the live client
+</details>
+
+<details>
+<summary><strong>Live client usage</strong></summary>
 
 ```python
 import asyncio
@@ -227,100 +356,24 @@ def on_position(data, timestamp):
     ...
 ```
 
----
-
-## Tools
-
-### Lite Mode (15 tools)
-
-Install: `pip install "mcp[cli]" requests`
-
-Uses F1's free static archive (2018-present) and Jolpica API (1950-present). No API keys needed.
-
-| Tool | Description |
-|------|-------------|
-| `list_seasons` | Available seasons (2018-present) |
-| `list_races` | Full season calendar with dates |
-| `get_race_info` | Session details and available data feeds |
-| `get_standings` | Race classification — positions, gaps, best laps, pits |
-| `get_lap_times` | Lap-by-lap times, filterable by driver and lap range |
-| `get_telemetry` | Speed, RPM, throttle, brake, gear, DRS for a specific lap |
-| `get_tyre_strategy` | Compound, stint length, new/used for every driver |
-| `get_pit_stops` | All pit stops sorted by fastest |
-| `get_race_control` | Flags, penalties, safety cars, investigations |
-| `get_weather` | Air/track temp, rain, humidity, wind |
-| `get_speed_traps` | Speed at 4 measurement points per driver |
-| `get_driver_comparison` | Head-to-head: position, pace, strategy, pit stops |
-| `get_team_radio` | Team radio clip URLs |
-| `get_historical_results` | Race results from 1950 to present |
-| `get_championship_standings` | Driver/constructor championships from 1950+ |
-
-### Full Mode (69 tools)
-
-Install: `pip install -r requirements-full.txt`
-
-Everything in Lite, plus 54 FastF1-powered tools:
-
-| Category | Tools |
-|----------|-------|
-| **Visual Plots** | `plot_telemetry_comparison`, `plot_gear_shifts`, `plot_multi_telemetry_comparison`, `plot_driver_telemetry_comparison` |
-| **Telemetry Analysis** | `analyze_brake_points`, `analyze_rpm_data`, `analyze_drs_usage` |
-| **Lap Analysis** | `get_lap_times_fastf1`, `get_deleted_laps`, `analyze_lap_consistency`, `get_fastest_sectors`, `get_personal_best_laps`, `compare_sector_times` |
-| **Strategy** | `get_driver_tyre_detail`, `get_stint_analysis`, `compare_tire_compounds`, `compare_tire_age_performance`, `analyze_starting_tires`, `compare_strategies` |
-| **Race Analysis** | `get_race_results`, `get_sprint_results`, `get_session_summary`, `get_fastest_lap_data`, `detect_overtakes`, `compare_grid_to_finish`, `get_qualifying_progression` |
-| **Pit Stops** | `get_pit_stop_detail`, `get_fastest_pit_stops` |
-| **Driver & Team** | `get_driver_info`, `get_driver_standings`, `get_constructor_standings`, `team_head_to_head`, `get_team_laps`, `analyze_long_run_pace` |
-| **Track & Safety** | `get_circuit_info`, `get_track_status`, `get_track_record`, `get_race_control_messages`, `get_penalties`, `get_dnf_list` |
-| **Speed & Position** | `get_speed_trap_comparison`, `get_position_changes`, `get_gap_to_leader` |
-| **History** | `get_race_winners_history` |
-| **Live Data** | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
-| **Radio** | `get_driver_radio` (via OpenF1 API) |
-| **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
+</details>
 
 ---
 
-## Data Sources
+## Reference
 
-All core data is **free and requires no API keys**.
-
-| Source | What it provides | Coverage | Auth needed? |
-|--------|-----------------|----------|-------------|
-| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | Telemetry, timing, strategy, pit stops, weather, race control | 2018-present | No |
-| [Jolpica-F1](https://api.jolpi.ca/ergast/f1/) | Historical results and championships | 1950-present | No |
-| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | Enhanced telemetry analysis and plots | 2018-present | No |
-| [F1 SignalR Core](https://livetiming.formula1.com/signalrcore) (optional) | Real-time race data during live sessions | Live only | Free for most data, F1 TV for telemetry |
-
----
-
-## How It Works
-
-Pitwall reads from F1's publicly available static timing archive — the same data that powers the official F1 app. After each session ends (~30 minutes), F1 publishes 33 data feeds per session including full car telemetry (speed, RPM, throttle, brake, gear, DRS at ~4Hz per car), GPS positions, tyre data, pit stops, and race control messages.
-
-The telemetry tool (`get_telemetry`) correlates the timing stream with the car data stream to extract telemetry for a specific driver on a specific lap — something no other F1 MCP server does.
-
-### Architecture
-
-```
-Claude ──MCP──> Pitwall ──HTTP──> livetiming.formula1.com/static/ (free)
-                       ──HTTP──> api.jolpi.ca/ergast/f1/ (free)
-                       ──lib──>  FastF1 (optional, local)
-                       ──WS───> SignalR Core (optional, live races)
-```
-
----
-
-## Race Names
+### Race Names
 
 Race names are fuzzy-matched. All of these work:
 
 ```
-"china", "chinese", "shanghai"          → Chinese Grand Prix
-"australia", "melbourne", "aus"         → Australian Grand Prix
-"monaco", "monte carlo"                 → Monaco Grand Prix
-"silverstone", "uk", "great britain"    → British Grand Prix
+"china", "chinese", "shanghai"           → Chinese Grand Prix
+"australia", "melbourne", "aus"          → Australian Grand Prix
+"monaco", "monte carlo"                  → Monaco Grand Prix
+"silverstone", "great britain", "british" → British Grand Prix
 ```
 
-## Driver Codes
+### Driver Codes
 
 ```
 VER = Verstappen    HAM = Hamilton    NOR = Norris     LEC = Leclerc
@@ -330,35 +383,28 @@ ALO = Alonso        STR = Stroll      OCO = Ocon       BOT = Bottas
 ALB = Albon         HUL = Hulkenberg  COL = Colapinto  LIN = Lindblad
 ```
 
----
-
-## Project Files
+### Project Files
 
 | File | Purpose |
 |------|---------|
-| `pitwall.py` | MCP server — 69 tools, auto-degrades to 15 without FastF1 |
+| `pitwall.py` | MCP server — 67 tools, auto-degrades to 14 without FastF1 |
 | `signalr_client.py` | Raw SignalR Core WebSocket client for live race data |
 | `decompressor.py` | Zlib decompression for CarData.z / Position.z |
 | `merger.py` | Keyframe + delta state management for F1's incremental format |
 | `topics.py` | All 20 SignalR topics with auth/compression metadata |
 | `auth_setup.py` | F1 TV token setup — browser-based OAuth flow |
-| `SKILL.md` | Beginner-friendly skill for Claude Desktop (upload via Settings) |
-| `CLAUDE.md` | Project context for Claude Code |
-| `requirements.txt` | Lite dependencies |
-| `requirements-full.txt` | Full dependencies (FastF1 + SignalR) |
 
 ---
 
-## Running the Server
+## Contributing
 
-```bash
-# MCP stdio (Claude Code / Claude Desktop)
-python3 pitwall.py
+Found a bug? Want to add a tool? Contributions are welcome.
 
-# MCP HTTP (remote / self-hosted)
-python3 pitwall.py --http
-python3 pitwall.py --http --port 3000
-```
+1. Fork the repo
+2. Create a feature branch
+3. Make your changes
+4. Run the test suite: `python3 tests/pitwall_tool_validation.py`
+5. Open a pull request
 
 ---
 
@@ -368,17 +414,13 @@ python3 pitwall.py --http --port 3000
 - [Jolpica-F1](https://github.com/jolpica/jolpica-f1) — the Ergast API successor
 - [drivenrajat/f1](https://github.com/drivenrajat/f1) — inspiration for FastF1 tool patterns
 
----
-
 ## Built by
 
 **Darsh Joshi** — AI Engineer
 
-- LinkedIn: [linkedin.com/in/darshjoshi](https://linkedin.com/in/darshjoshi)
-- Email: [contact@darshjoshi.com](mailto:contact@darshjoshi.com)
-- GitHub: [github.com/darshjoshi](https://github.com/darshjoshi)
-
-Questions, ideas, or want to contribute? Open an issue or reach out.
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-darshjoshi-blue?logo=linkedin)](https://linkedin.com/in/darshjoshi)
+[![GitHub](https://img.shields.io/badge/GitHub-darshjoshi-black?logo=github)](https://github.com/darshjoshi)
+[![Email](https://img.shields.io/badge/Email-contact@darshjoshi.com-red?logo=gmail)](mailto:contact@darshjoshi.com)
 
 ## License
 

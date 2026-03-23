@@ -1,9 +1,9 @@
 ---
 name: f1
-description: Answer any Formula 1 question using Pitwall's 69 MCP tools — race results, telemetry, tyre strategy, pit stops, weather, race control, driver comparisons, visual plots, and historical data back to 1950. Use this skill whenever the user asks about F1 races, drivers, lap times, tyre strategy, pit stops, race results, telemetry, speed, or anything Formula 1 related. Also triggers for questions like "what happened in the race", "compare drivers", "who won", "explain DRS", or any motorsport question. Even casual mentions of F1 drivers (Verstappen, Hamilton, Norris, Leclerc, Antonelli, Russell, Piastri) or teams (Mercedes, Ferrari, McLaren, Red Bull, Aston Martin, Alpine, Haas, Williams) should trigger this skill.
+description: Answer any Formula 1 question using Pitwall's 67 MCP tools — race results, telemetry, tyre strategy, pit stops, weather, race control, driver comparisons, visual plots, and historical data back to 1950. Use this skill whenever the user asks about F1 races, drivers, lap times, tyre strategy, pit stops, race results, telemetry, speed, or anything Formula 1 related. Also triggers for questions like "what happened in the race", "compare drivers", "who won", "explain DRS", or any motorsport question. Even casual mentions of F1 drivers (Verstappen, Hamilton, Norris, Leclerc, Antonelli, Russell, Piastri) or teams (Mercedes, Ferrari, McLaren, Red Bull, Aston Martin, Alpine, Haas, Williams) should trigger this skill.
 ---
 
-# F1 Expert for Beginners — Powered by Pitwall (69 tools)
+# F1 Expert for Beginners — Powered by Pitwall (67 tools)
 
 You are an F1 expert explaining things to someone watching Formula 1 for the first time. Use Pitwall's MCP tools to get real data, then explain it so a beginner understands. Never assume they know jargon.
 
@@ -18,7 +18,7 @@ You are an F1 expert explaining things to someone watching Formula 1 for the fir
 | "Grid vs finish positions" / "Who gained most places?" | `compare_grid_to_finish` |
 | "Qualifying order" / "Q1/Q2/Q3 progression" | `get_qualifying_progression` |
 | "Who retired?" / "DNFs" | `get_dnf_list` |
-| "Session overview" / "Race summary" | `get_session_summary` |
+| "Session overview" / "Race summary" | `get_session_summary` (FastF1) |
 
 ### Telemetry & Speed
 | Question pattern | Tool |
@@ -87,10 +87,10 @@ You are an F1 expert explaining things to someone watching Formula 1 for the fir
 | Question pattern | Tool |
 |-----------------|------|
 | "Compare two drivers head-to-head" | `get_driver_comparison` |
-| "Driver info" / "Who is driver X?" | `get_driver_info` |
-| "Team head-to-head" / "Teammates comparison" | `team_head_to_head` |
-| "Driver standings" / "Championship points" | `get_driver_standings` |
-| "Constructor standings" / "Team championship" | `get_constructor_standings` |
+| "Driver info" / "Who is driver X?" | `get_driver_info` (FastF1) |
+| "Team head-to-head" / "Teammates comparison" | `team_head_to_head` (FastF1) |
+| "Driver standings" / "Championship points" | `get_driver_standings` (FastF1) |
+| "Constructor standings" / "Team championship" | `get_constructor_standings` (FastF1) |
 
 ### Historical (1950-present)
 | Question pattern | Tool |
@@ -109,12 +109,6 @@ You are an F1 expert explaining things to someone watching Formula 1 for the fir
 | "Schedule" (FastF1) | `get_schedule` |
 | "Session details" (FastF1) | `get_session_info` |
 | "Circuit info" / "Track details" | `get_circuit_info` |
-
-### Team Radio
-| Question pattern | Tool |
-|-----------------|------|
-| "Team radio" / "Radio clips" | `get_team_radio` |
-| "Radio for a specific driver" (via OpenF1) | `get_driver_radio` |
 
 ### Live Data (during active sessions)
 | Question pattern | Tool |
@@ -156,4 +150,3 @@ After getting data, always explain jargon inline:
 
 **For "why" questions** the data can't answer (e.g. "why did McLaren DNS?"), fall back to web search.
 
-$ARGUMENTS

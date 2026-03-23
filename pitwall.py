@@ -1,13 +1,13 @@
 """
 Pitwall — F1 Data MCP Server for Claude
 
-The most comprehensive Formula 1 MCP server. 60+ tools covering
+The most comprehensive Formula 1 MCP server. 67 tools covering
 race results, telemetry, tyre strategy, pit stops, weather, race control,
 driver comparisons, speed traps, and historical data back to 1950.
 
 Two modes:
   Lite  — 14 tools, no heavy dependencies, free data only
-  Full  — 64 tools, includes FastF1 plots and deep analysis
+  Full  — 67 tools, includes FastF1 plots and deep analysis
 
 Usage:
   claude mcp add pitwall -- python3 pitwall.py
@@ -54,7 +54,7 @@ except ImportError:
 # Initialize server
 mcp = FastMCP(
     "Pitwall",
-    instructions="""Pitwall — F1 data command center with 69 tools.
+    instructions="""Pitwall — F1 data command center with 67 tools.
 
 HOW TO USE:
 1. Use list_races(year) to find sessions. Race names are fuzzy-matched: 'china', 'shanghai', 'chinese' all work.
