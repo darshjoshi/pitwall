@@ -8,12 +8,12 @@
     "url": "https://github.com/darshjoshi/pitwall",
     "source": "github"
   },
-  "version": "1.0.4",
+  "version": "1.0.5",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "f1pitwall",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "transport": {
         "type": "stdio"
       },
