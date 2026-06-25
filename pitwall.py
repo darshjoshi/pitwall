@@ -746,7 +746,11 @@ def get_historical_results(year: int = 0, race: str = "", driver: str = "") -> s
         if race and not circuit_id:
             return (f"Couldn't map '{race}' to a circuit. Try a circuit or country name "
                     f"like 'monza', 'monaco', 'silverstone', 'spain'.")
-        if year and driver:
+        if year and driver and circuit_id:
+            url = f"{JOLPICA}/{year}/drivers/{driver}/circuits/{circuit_id}/results.json?limit=30"
+        elif driver and circuit_id:
+            url = f"{JOLPICA}/drivers/{driver}/circuits/{circuit_id}/results.json?limit=30"
+        elif year and driver:
             url = f"{JOLPICA}/{year}/drivers/{driver}/results.json?limit=50"
         elif year and circuit_id:
             url = f"{JOLPICA}/{year}/circuits/{circuit_id}/results.json?limit=30"
@@ -861,6 +865,31 @@ def _resolve_circuit_id(gp: str):
 
 
 if FASTF1_AVAILABLE:
+
+    def _fastf1_pit_durations(year: int, gp: str) -> list:
+        """Pit-lane time (in->out) per stop via FastF1 — fallback for pre-2025 seasons,
+        where F1's static PitStopSeries (stationary time) does not exist. FastF1 derives
+        pit timing from PitInTime/PitOutTime, which is available for 2018+.
+        Returns dicts: {driver, lap, lane, compound}.
+        """
+        session = fastf1.get_session(year, gp, 'R')
+        session.load()
+        all_laps = session.laps
+        pit_laps = all_laps[all_laps['PitInTime'].notna()]
+        out = []
+        for _, lap in pit_laps.iterrows():
+            dur = None
+            if pd.notna(lap.get('PitOutTime')) and pd.notna(lap['PitInTime']):
+                dur = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
+            if dur is None or pd.isna(dur):
+                drv = all_laps[all_laps['Driver'] == lap['Driver']].sort_values('LapNumber')
+                nxt = drv[drv['LapNumber'] > lap['LapNumber']]
+                if len(nxt) and pd.notna(nxt.iloc[0].get('PitOutTime')):
+                    dur = (nxt.iloc[0]['PitOutTime'] - lap['PitInTime']).total_seconds()
+            if dur is not None and not pd.isna(dur) and 0 < dur < 120:
+                out.append({"driver": lap['Driver'], "lap": int(lap['LapNumber']),
+                            "lane": round(dur, 1), "compound": lap.get('Compound', '?')})
+        return out
 
     def _fig_to_image(fig) -> ImageContent:
         buf = io.BytesIO()
@@ -1284,8 +1313,30 @@ if FASTF1_AVAILABLE:
             if not path:
                 return "No session found"
             dm = _driver_map(path)
-            pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
-            stints_all = _get_keyframe(path, "TyreStintSeries").get("Stints", {})
+            try:
+                pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+                stints_all = _get_keyframe(path, "TyreStintSeries").get("Stints", {})
+            except ValueError:
+                # Pre-2025: no static stationary-time feed. Fall back to pit-lane time
+                # + per-lap compound via FastF1.
+                durs = _fastf1_pit_durations(year, gp)
+                if driver:
+                    durs = [d for d in durs if d["driver"].upper() == driver.upper()]
+                    if not durs:
+                        return f"Driver '{driver}' not found or has no pit stops in this race."
+                if not durs:
+                    return "No pit stops found"
+                by_drv = {}
+                for d in durs:
+                    by_drv.setdefault(d["driver"], []).append(d)
+                result = (f"🔧 Pit Stop Detail (pit-lane time — stationary time unavailable "
+                          f"before 2025) — {race_name} {year}:\n\n")
+                for drv, ds in by_drv.items():
+                    result += f"{drv}:\n"
+                    for d in sorted(ds, key=lambda x: x["lap"]):
+                        result += f"  Lap {d['lap']}: {d['compound']} — {d['lane']}s in pit lane\n"
+                    result += "\n"
+                return result
 
             if driver:
                 tla_to_num = {v["tla"].upper(): k for k, v in dm.items()}
@@ -2068,7 +2119,19 @@ if FASTF1_AVAILABLE:
             if not path:
                 return "No session found"
             dm = _driver_map(path)
-            pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+            try:
+                pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+            except ValueError:
+                # Pre-2025: no static stationary-time feed. Fall back to pit-lane time.
+                durs = sorted(_fastf1_pit_durations(year, gp), key=lambda d: d["lane"])
+                if not durs:
+                    return "No pit stop times available"
+                shown = durs[:top_n]
+                result = (f"⚡ Top {len(shown)} Fastest Pit Stops (pit-lane time — stationary "
+                          f"time unavailable before 2025) — {race_name} {year}:\n\n")
+                for i, d in enumerate(shown, 1):
+                    result += f"{i:>2}. {d['driver']} — Lap {d['lap']}: {d['lane']}s in pit lane\n"
+                return result
             stops = []
             seen = set()  # F1's live feed can emit a stop twice; one stop per (driver, lap)
             for num, recs in pit_times.items():
