@@ -741,16 +741,29 @@ def get_historical_results(year: int = 0, race: str = "", driver: str = "") -> s
         driver: Driver ID (e.g. 'verstappen', 'hamilton')
     """
     try:
+        # Honor the `race` filter by resolving it to an Ergast circuit ID.
+        circuit_id = _resolve_circuit_id(race) if race else None
+        if race and not circuit_id:
+            return (f"Couldn't map '{race}' to a circuit. Try a circuit or country name "
+                    f"like 'monza', 'monaco', 'silverstone', 'spain'.")
         if year and driver:
             url = f"{JOLPICA}/{year}/drivers/{driver}/results.json?limit=50"
+        elif year and circuit_id:
+            url = f"{JOLPICA}/{year}/circuits/{circuit_id}/results.json?limit=30"
         elif year:
             url = f"{JOLPICA}/{year}/results.json?limit=30"
+        elif circuit_id:
+            url = f"{JOLPICA}/circuits/{circuit_id}/results.json?limit=30"
         elif driver:
             url = f"{JOLPICA}/drivers/{driver}/results.json?limit=30"
         else:
             url = f"{JOLPICA}/current/results.json?limit=30"
         races = requests.get(url, timeout=10).json().get("MRData", {}).get("RaceTable", {}).get("Races", [])
         if not races:
+            if circuit_id:
+                where = f" at {race}" + (f" in {year}" if year else "")
+                return (f"No results found{where}. The historical source (Jolpica/Ergast) can lag "
+                        f"the live calendar by a few rounds for the current season.")
             return "No results found"
         result = f"=== Historical Results ({len(races)} races) ===\n\n"
         for r in races[:20]:
@@ -1260,45 +1273,57 @@ if FASTF1_AVAILABLE:
     
     @mcp.tool()
     def get_pit_stop_detail(year: int, gp: str, driver: str = None) -> str:
-        """Get detailed pit stop data via FastF1 — includes tyre compounds swapped and duration."""
+        """Get detailed pit stop data — stationary time, pit-lane time, and tyre compound swap per stop.
+
+        Stationary time (~2s) is the time the car is stopped in the box; pit-lane time
+        (in->out, ~20-30s) is the full transit. Sourced from F1's PitStopSeries +
+        TyreStintSeries so durations match get_pit_stops / get_fastest_pit_stops.
+        """
         try:
-            session = fastf1.get_session(year, gp, 'R')
-            session.load()
-            
+            path, race_name = _find_session(year, gp, "Race")
+            if not path:
+                return "No session found"
+            dm = _driver_map(path)
+            pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+            stints_all = _get_keyframe(path, "TyreStintSeries").get("Stints", {})
+
             if driver:
-                laps = session.laps.pick_drivers(driver)
+                tla_to_num = {v["tla"].upper(): k for k, v in dm.items()}
+                num = tla_to_num.get(driver.upper())
+                if not num:
+                    return f"Driver '{driver}' not found. Available: {sorted(tla_to_num)}"
+                nums = [num]
             else:
-                laps = session.laps
-            
-            # Get pit laps (laps where pit stop occurred)
-            pit_laps = laps[laps['PitInTime'].notna()]
+                nums = list(pit_times.keys())
 
-            if len(pit_laps) == 0:
-                return "No pit stops found"
-
-            # Build a map of PitOutTime per driver per lap for cross-lap lookups
-            all_session_laps = session.laps
-            result = "🔧 Pit Stops:\n"
-            for idx, lap in pit_laps.iterrows():
-                duration = None
-                # Try 1: Use PitStopDuration if available
-                if 'PitStopDuration' in lap.index and pd.notna(lap.get('PitStopDuration')):
-                    dur_val = lap['PitStopDuration']
-                    duration = dur_val.total_seconds() if hasattr(dur_val, 'total_seconds') else float(dur_val)
-                # Try 2: PitOutTime on same row
-                if (duration is None or pd.isna(duration)) and pd.notna(lap.get('PitOutTime')) and pd.notna(lap['PitInTime']):
-                    duration = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
-                # Try 3: PitOutTime on the next lap for this driver
-                if duration is None or pd.isna(duration):
-                    drv_laps = all_session_laps[all_session_laps['Driver'] == lap['Driver']].sort_values('LapNumber')
-                    next_laps = drv_laps[drv_laps['LapNumber'] > lap['LapNumber']]
-                    if len(next_laps) > 0:
-                        nxt = next_laps.iloc[0]
-                        if pd.notna(nxt.get('PitOutTime')):
-                            duration = (nxt['PitOutTime'] - lap['PitInTime']).total_seconds()
-                dur_str = f"{duration:.1f}s" if duration is not None and not pd.isna(duration) else "N/A"
-                result += f"Lap {int(lap['LapNumber'])}: {lap['Driver']} - {dur_str} ({lap['Compound']})\n"
-
+            result = f"🔧 Pit Stop Detail — {race_name} {year}:\n\n"
+            for num in nums:
+                recs = pit_times.get(num, [])
+                if not recs:
+                    continue
+                tla = dm.get(num, {}).get("tla", f"#{num}")
+                stints = [s for s in stints_all.get(num, []) if isinstance(s, dict)]
+                # Dedupe by lap (the live feed can emit a stop twice) so stop-to-stint
+                # alignment below stays correct.
+                by_lap = {}
+                for r in recs:
+                    ps = r.get("PitStop", {})
+                    by_lap[str(ps.get("Lap", "?"))] = {
+                        "lap": ps.get("Lap", "?"),
+                        "stat": ps.get("PitStopTime", "?"),
+                        "lane": ps.get("PitLaneTime", "?")}
+                stops = sorted(
+                    by_lap.values(),
+                    key=lambda x: int(x["lap"]) if str(x["lap"]).isdigit() else 999
+                )
+                result += f"{tla}:\n"
+                for i, st in enumerate(stops):
+                    # Stop i = transition from stint i to stint i+1 (chronological order).
+                    swap = ""
+                    if i + 1 < len(stints):
+                        swap = f" {stints[i].get('Compound', '?')}→{stints[i + 1].get('Compound', '?')}"
+                    result += f"  Lap {st['lap']}:{swap} — {st['stat']}s stationary (pit-lane {st['lane']}s)\n"
+                result += "\n"
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -1666,22 +1691,42 @@ if FASTF1_AVAILABLE:
     
     @mcp.tool()
     def analyze_drs_usage(year: int, gp: str, driver: str, session: str = 'R') -> str:
-        """Analyze DRS usage patterns for a driver's fastest lap."""
+        """Analyze DRS usage on a driver's fastest lap.
+
+        DRS-open is detected via the FastF1 car-data codes 10/12/14 (8 = eligible but
+        not yet open; 0/1 = closed). From 2026, F1 replaced DRS with active aero, so no
+        activations are reported.
+        """
         try:
             s = fastf1.get_session(year, gp, session)
             s.load()
-            
+
             lap = s.laps.pick_drivers(driver).pick_fastest()
+            if lap is None or (hasattr(lap, 'empty') and lap.empty):
+                return f"No lap data for {driver} in {gp} {year} {session}."
             tel = lap.get_car_data()
-            
-            # Count DRS activations (DRS values: 0=Off, 1-14=DRS levels)
-            drs_active = tel[tel['DRS'] > 0]
-            drs_percentage = (len(drs_active) / len(tel)) * 100 if len(tel) > 0 else 0
-            
-            result = f"💨 DRS Analysis - {driver} ({gp} {year}):\n\n"
-            result += f"DRS Active: {drs_percentage:.1f}% of lap\n"
-            result += f"DRS Samples: {len(drs_active)} / {len(tel)}\n"
-            
+            total = len(tel)
+            if total == 0 or 'DRS' not in tel:
+                return f"No telemetry available for {driver} ({gp} {year} {session})."
+
+            # DRS-open = codes 10/12/14. NOT '> 0': code 1 is closed and code 8 is
+            # 'eligible but not open', so '> 0' over-counts open by ~10x.
+            drs = pd.to_numeric(tel['DRS'], errors='coerce')
+            open_samples = int(drs.isin([10, 12, 14]).sum())
+            pct = (open_samples / total) * 100 if total else 0
+
+            result = f"💨 DRS Analysis - {driver} ({gp} {year} {session}):\n\n"
+            if open_samples == 0:
+                if year >= 2026:
+                    result += ("No DRS activations — from 2026 F1 replaced DRS with active-aero / "
+                               "manual override, so DRS is not used.\n")
+                else:
+                    result += ("No DRS open on this lap — the fastest lap was likely set in clear air, "
+                               "where DRS cannot be deployed.\n")
+                result += f"Samples checked: {total}\n"
+            else:
+                result += f"DRS Open: {pct:.1f}% of lap\n"
+                result += f"DRS Samples: {open_samples} / {total}\n"
             return result
         except Exception as e:
             return f"Error: {str(e)}"
@@ -2012,54 +2057,41 @@ if FASTF1_AVAILABLE:
     
     @mcp.tool()
     def get_fastest_pit_stops(year: int, gp: str, top_n: int = 10) -> str:
-        """Get the fastest pit stops of the race."""
+        """Get the fastest pit stops of the race, ranked by stationary time.
+
+        Stationary time = how long the car is stopped in the box (the ~2s 'pit stop'
+        fans mean). Pit-lane time (in->out, ~20-30s) is shown alongside for context.
+        Sourced from F1's PitStopSeries so it matches get_pit_stops / get_pit_stop_detail.
+        """
         try:
-            session = fastf1.get_session(year, gp, 'R')
-            session.load()
-            
-            all_laps = session.laps
-            pit_laps = all_laps[all_laps['PitInTime'].notna()].copy()
-
-            if len(pit_laps) == 0:
-                return "No pit stops found"
-
-            # Calculate pit stop duration — try multiple approaches
-            durations = []
-            for idx, lap in pit_laps.iterrows():
-                duration = None
-                # Try 1: PitStopDuration column
-                if 'PitStopDuration' in lap.index and pd.notna(lap.get('PitStopDuration')):
-                    dur_val = lap['PitStopDuration']
-                    duration = dur_val.total_seconds() if hasattr(dur_val, 'total_seconds') else float(dur_val)
-                # Try 2: PitOutTime on same row
-                if (duration is None or pd.isna(duration)) and pd.notna(lap.get('PitOutTime')) and pd.notna(lap['PitInTime']):
-                    duration = (lap['PitOutTime'] - lap['PitInTime']).total_seconds()
-                # Try 3: PitOutTime on the next lap for this driver
-                if duration is None or pd.isna(duration):
-                    drv_laps = all_laps[all_laps['Driver'] == lap['Driver']].sort_values('LapNumber')
-                    next_laps = drv_laps[drv_laps['LapNumber'] > lap['LapNumber']]
-                    if len(next_laps) > 0:
-                        nxt = next_laps.iloc[0]
-                        if pd.notna(nxt.get('PitOutTime')):
-                            duration = (nxt['PitOutTime'] - lap['PitInTime']).total_seconds()
-                durations.append(duration)
-            pit_laps['PitDuration'] = durations
-
-            # Drop stops where we couldn't compute duration or value is bogus
-            valid_stops = pit_laps[pit_laps['PitDuration'].notna()]
-            valid_stops = valid_stops[(valid_stops['PitDuration'] > 0) & (valid_stops['PitDuration'] < 120)]
-            if len(valid_stops) == 0:
-                return "No pit stop durations available"
-            fastest_stops = valid_stops.nsmallest(top_n, 'PitDuration')
-
-            result = f"⚡ Top {top_n} Fastest Pit Stops - {gp} {year}:\n\n"
-
-            for i, (idx, lap) in enumerate(fastest_stops.iterrows(), 1):
-                driver = lap['Driver']
-                duration = lap['PitDuration']
-                lap_num = int(lap['LapNumber'])
-                result += f"{i}. {driver} - Lap {lap_num}: {duration:.2f}s\n"
-
+            path, race_name = _find_session(year, gp, "Race")
+            if not path:
+                return "No session found"
+            dm = _driver_map(path)
+            pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+            stops = []
+            seen = set()  # F1's live feed can emit a stop twice; one stop per (driver, lap)
+            for num, recs in pit_times.items():
+                tla = dm.get(num, {}).get("tla", f"#{num}")
+                for r in recs:
+                    ps = r.get("PitStop", {})
+                    t = ps.get("PitStopTime")
+                    lap = ps.get("Lap", "?")
+                    key = (num, str(lap))
+                    if t in (None, "?") or key in seen:
+                        continue
+                    seen.add(key)
+                    try:
+                        stops.append((float(t), tla, lap, ps.get("PitLaneTime", "?")))
+                    except (TypeError, ValueError):
+                        continue
+            if not stops:
+                return "No pit stop times available"
+            stops.sort(key=lambda x: x[0])
+            shown = stops[:top_n]
+            result = f"⚡ Top {len(shown)} Fastest Pit Stops (stationary time) — {race_name} {year}:\n\n"
+            for i, (t, tla, lap, lane) in enumerate(shown, 1):
+                result += f"{i:>2}. {tla} — Lap {lap}: {t:.1f}s stationary (pit-lane {lane}s)\n"
             return result
         except Exception as e:
             return f"Error: {str(e)}"
