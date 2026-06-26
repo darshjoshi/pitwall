@@ -2745,7 +2745,7 @@ if FASTF1_AVAILABLE:
         label = " - ".join(p for p in (meeting, name) if p) or "Unknown session"
         return raw in _LIVE_ON_TRACK, label, raw
 
-    def _driver_map(state):
+    def _live_driver_map(state):
         """driver number -> {'tla', 'team'} from the DriverList keyframe."""
         out = {}
         for num, d in (state.get("DriverList") or {}).items():
@@ -2760,6 +2760,13 @@ if FASTF1_AVAILABLE:
             except (TypeError, ValueError):
                 return 999
         return sorted(lines.items(), key=key)
+
+    def _as_list(x):
+        # F1 deltas sometimes arrive as index-keyed dicts ({"0":..,"1":..}) instead of
+        # lists; normalize so [-1] / enumerate work regardless of form.
+        if isinstance(x, dict):
+            return [x[k] for k in sorted(x, key=lambda k: int(k) if str(k).isdigit() else 0)]
+        return x or []
 
     def _not_live_msg(label, raw, alt):
         return (
@@ -2787,7 +2794,7 @@ if FASTF1_AVAILABLE:
         is_live, label, raw = _session_label(state)
         if not is_live:
             return _not_live_msg(label, raw, "get_race_results")
-        dmap = _driver_map(state)
+        dmap = _live_driver_map(state)
         rows = []
         for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
             tla = dmap.get(num, {}).get("tla", f"#{num}")
@@ -2809,7 +2816,7 @@ if FASTF1_AVAILABLE:
         is_live, label, raw = _session_label(state)
         if not is_live:
             return _not_live_msg(label, raw, "get_lap_times / get_fastest_lap_data")
-        dmap = _driver_map(state)
+        dmap = _live_driver_map(state)
         rows = []
         for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
             tla = dmap.get(num, {}).get("tla", f"#{num}")
@@ -2831,7 +2838,7 @@ if FASTF1_AVAILABLE:
         is_live, label, raw = _session_label(state)
         if not is_live:
             return _not_live_msg(label, raw, "get_fastest_sectors / compare_sector_times")
-        dmap = _driver_map(state)
+        dmap = _live_driver_map(state)
         want = (driver or "").strip().upper()
         lines = (state.get("TimingData") or {}).get("Lines", {})
         target = None
@@ -2845,7 +2852,7 @@ if FASTF1_AVAILABLE:
         num, e = target
         tla = dmap.get(num, {}).get("tla", f"#{num}")
         out = [f"\U0001F534 LIVE - {tla} sectors ({label})", ""]
-        for i, sec in enumerate(e.get("Sectors") or [], 1):
+        for i, sec in enumerate(_as_list(e.get("Sectors")), 1):
             val = sec.get("Value") or sec.get("PreviousValue") or "-"
             mark = " *fastest*" if sec.get("OverallFastest") else (" *PB*" if sec.get("PersonalFastest") else "")
             out.append(f"S{i}: {val}{mark}")
@@ -2951,7 +2958,7 @@ if FASTF1_AVAILABLE:
             return _not_live_msg(label, raw, "get_telemetry(driver, lap=N) for completed sessions")
 
         from decompressor import parse_car_data
-        dmap = _driver_map(st)
+        dmap = _live_driver_map(st)
         want = (driver or "").strip().upper()
         num = None
         for n, d in dmap.items():
@@ -2995,12 +3002,12 @@ if FASTF1_AVAILABLE:
         is_live, label, raw = _session_label(state)
         if not is_live:
             return _not_live_msg(label, raw, "get_tyre_strategy / get_starting_tires")
-        dmap = _driver_map(state)
+        dmap = _live_driver_map(state)
         tad = (state.get("TimingAppData") or {}).get("Lines", {})
         abbr = {"SOFT": "S", "MEDIUM": "M", "HARD": "H", "INTERMEDIATE": "I", "WET": "W"}
         rows = []
         for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
-            stints = (tad.get(num) or {}).get("Stints") or []
+            stints = _as_list((tad.get(num) or {}).get("Stints"))
             if not stints:
                 continue
             cur = stints[-1]
@@ -3023,10 +3030,7 @@ if FASTF1_AVAILABLE:
         return _format_tyres(st)
 
     def _rc_messages(state):
-        msgs = (state.get("RaceControlMessages") or {}).get("Messages")
-        if isinstance(msgs, dict):  # delta-merged form is keyed by index
-            return [msgs[k] for k in sorted(msgs, key=lambda x: int(x) if str(x).isdigit() else 0)]
-        return msgs or []
+        return _as_list((state.get("RaceControlMessages") or {}).get("Messages"))
 
     def _format_race_control(state):
         is_live, label, raw = _session_label(state)
@@ -3055,7 +3059,7 @@ if FASTF1_AVAILABLE:
         is_live, label, raw = _session_label(state)
         if not is_live:
             return _not_live_msg(label, raw, "get_speed_traps / get_speed_trap_comparison")
-        dmap = _driver_map(state)
+        dmap = _live_driver_map(state)
         rows = []
         for num, e in (state.get("TimingStats") or {}).get("Lines", {}).items():
             val = ((e.get("BestSpeeds") or {}).get("ST") or {}).get("Value")
