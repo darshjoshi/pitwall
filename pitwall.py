@@ -560,7 +560,13 @@ def get_pit_stops(year: int = 2026, race: str = "", session_type: str = "Race") 
         if not path:
             return "No session found"
         dm = _driver_map(path)
-        pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+        try:
+            pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
+        except ValueError:
+            # F1's PitStopSeries (stationary times) only exists from 2025 onward.
+            return (f"Pit stop times aren't available for {race_name} {year} — F1's "
+                    f"PitStopSeries feed only covers 2025 onward. For earlier seasons, "
+                    f"get_fastest_pit_stops / get_pit_stop_detail give pit-lane times via FastF1.")
         stops = []
         for num, sl in pit_times.items():
             d = dm.get(num, {"tla": f"#{num}", "team": "?"})
