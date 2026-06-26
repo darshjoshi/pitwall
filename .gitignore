@@ -13,3 +13,6 @@ venv/
 dist/
 build/
 .gstack/
+
+# Local, repo-scoped dev skills (not shipped with the package)
+.claude/skills/telemetry-probe/

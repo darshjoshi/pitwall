@@ -2690,179 +2690,337 @@ if FASTF1_AVAILABLE:
             return f"Error: {e}"
     
     # ==============================================================================
-    # MODULE 28: LIVE TIMING (Real-time Race Data)
+    # MODULE 28: LIVE TIMING (real-time via raw SignalR — Pattern A: snapshot)
     # ==============================================================================
-    
+    # Each tool opens a short-lived SignalR connection, grabs the keyframe (the full
+    # current state F1 sends on Subscribe) plus a brief settle window, formats it, and
+    # disconnects. Timing/positions/weather need NO auth; only car telemetry (CarData.z)
+    # is auth-gated. We never label stale data "LIVE": if no session is running we say so
+    # and point at the post-session tools. ponytail: connect-per-call adds ~1-2s latency;
+    # upgrade path is one persistent background connection if we ever need sub-second.
+
+    import sys as _sys
+    _PITWALL_DIR = os.path.dirname(os.path.abspath(__file__))
+    if _PITWALL_DIR not in _sys.path:
+        _sys.path.insert(0, _PITWALL_DIR)
+
+    # SessionStatus.Status values meaning cars are (or just were) on track now.
+    _LIVE_ON_TRACK = {"Started", "Aborted"}
+
+    def _fetch_live(topics, settle=2.5, auth_token=None):
+        """Connect, grab keyframe + `settle`s of deltas, return {topic: merged_state}.
+        Stateless: one connection per call. Returns {"_error": msg} on failure."""
+        import asyncio
+        try:
+            from signalr_client import F1LiveClient
+        except Exception as e:
+            return {"_error": f"live client unavailable: {e}"}
+
+        async def _run():
+            client = F1LiveClient(
+                topics=list(topics),
+                no_auth=auth_token is None,
+                auth_token=auth_token,
+            )
+            task = asyncio.create_task(client.connect())
+            await asyncio.sleep(settle)
+            await client.stop()
+            try:
+                await asyncio.wait_for(task, timeout=3)
+            except Exception:
+                pass
+            return {t: client.get_state(t) for t in topics}
+
+        try:
+            return asyncio.run(_run())
+        except Exception as e:
+            return {"_error": str(e)}
+
+    def _session_label(state):
+        """(is_live, label, raw_status) from SessionInfo/SessionStatus keyframes."""
+        si = state.get("SessionInfo") or {}
+        raw = (state.get("SessionStatus") or {}).get("Status") or si.get("SessionStatus") or ""
+        meeting = (si.get("Meeting") or {}).get("Name", "")
+        name = si.get("Name", "")
+        label = " - ".join(p for p in (meeting, name) if p) or "Unknown session"
+        return raw in _LIVE_ON_TRACK, label, raw
+
+    def _driver_map(state):
+        """driver number -> {'tla', 'team'} from the DriverList keyframe."""
+        out = {}
+        for num, d in (state.get("DriverList") or {}).items():
+            if isinstance(d, dict) and d.get("Tla"):
+                out[num] = {"tla": d["Tla"], "team": d.get("TeamName", "")}
+        return out
+
+    def _by_position(lines):
+        def key(item):
+            try:
+                return int(item[1].get("Position"))
+            except (TypeError, ValueError):
+                return 999
+        return sorted(lines.items(), key=key)
+
+    def _not_live_msg(label, raw, alt):
+        return (
+            "No live F1 session running right now.\n"
+            f"Most recent: {label} (status: {raw or 'unknown'}).\n"
+            f"For completed sessions use {alt}."
+        )
+
+    # --- pure formatters (state -> str), kept separate so they are testable ---
+
+    def _format_status(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_race_results / get_session_summary")
+        ts = (state.get("TrackStatus") or {}).get("Message", "")
+        lc = state.get("LapCount") or {}
+        out = [f"\U0001F534 LIVE - {label}", f"Status: {raw}"]
+        if ts:
+            out.append(f"Track: {ts}")
+        if lc.get("CurrentLap"):
+            out.append(f"Lap: {lc.get('CurrentLap')}/{lc.get('TotalLaps', '?')}")
+        return "\n".join(out)
+
+    def _format_positions(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_race_results")
+        dmap = _driver_map(state)
+        rows = []
+        for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
+            tla = dmap.get(num, {}).get("tla", f"#{num}")
+            gap = e.get("GapToLeader", "")
+            iv = e.get("IntervalToPositionAhead")
+            iv = iv.get("Value", "") if isinstance(iv, dict) else (iv or "")
+            tag = "  PIT" if e.get("InPit") else ("  OUT" if e.get("Retired") else "")
+            line = f"P{e.get('Position', '?')} {tla}"
+            if gap and gap not in ("+0.000", "0.0"):
+                line += f"  {gap}"
+            if iv:
+                line += f"  ({iv})"
+            rows.append(line + tag)
+        if not rows:
+            return f"\U0001F534 LIVE - {label}\n(no timing lines yet)"
+        return f"\U0001F534 LIVE order - {label}\n\n" + "\n".join(rows)
+
+    def _format_laps(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_lap_times / get_fastest_lap_data")
+        dmap = _driver_map(state)
+        rows = []
+        for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
+            tla = dmap.get(num, {}).get("tla", f"#{num}")
+            ll = e.get("LastLapTime") or {}
+            last = ll.get("Value", "")
+            best = (e.get("BestLapTime") or {}).get("Value", "")
+            if not last and not best:
+                continue
+            mark = " *fastest*" if ll.get("OverallFastest") else (" *PB*" if ll.get("PersonalFastest") else "")
+            line = f"{tla}: {last or '-'}{mark}"
+            if best:
+                line += f"  (best {best})"
+            rows.append(line)
+        if not rows:
+            return f"\U0001F534 LIVE - {label}\n(no lap times yet)"
+        return f"\U0001F534 LIVE lap times - {label}\n\n" + "\n".join(rows)
+
+    def _format_sectors(state, driver):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_fastest_sectors / compare_sector_times")
+        dmap = _driver_map(state)
+        want = (driver or "").strip().upper()
+        lines = (state.get("TimingData") or {}).get("Lines", {})
+        target = None
+        for num, e in lines.items():
+            if num == want or dmap.get(num, {}).get("tla", "").upper() == want:
+                target = (num, e)
+                break
+        if not target:
+            active = ", ".join(sorted(d["tla"] for d in dmap.values())) or "none"
+            return f"Driver '{driver}' not found in live timing. Active: {active}"
+        num, e = target
+        tla = dmap.get(num, {}).get("tla", f"#{num}")
+        out = [f"\U0001F534 LIVE - {tla} sectors ({label})", ""]
+        for i, sec in enumerate(e.get("Sectors") or [], 1):
+            val = sec.get("Value") or sec.get("PreviousValue") or "-"
+            mark = " *fastest*" if sec.get("OverallFastest") else (" *PB*" if sec.get("PersonalFastest") else "")
+            out.append(f"S{i}: {val}{mark}")
+        st_trap = ((e.get("Speeds") or {}).get("ST") or {}).get("Value")
+        if st_trap:
+            out.append(f"\nSpeed trap: {st_trap} km/h")
+        last = (e.get("LastLapTime") or {}).get("Value")
+        if last:
+            out.append(f"Last lap: {last}")
+        return "\n".join(out)
+
+    def _format_weather(state):
+        is_live, label, raw = _session_label(state)
+        w = state.get("WeatherData") or {}
+        if not w:
+            return _not_live_msg(label, raw, "get_weather")
+        header = f"\U0001F534 LIVE weather - {label}" if is_live else f"Weather (last session: {label} - NOT live)"
+        rain = str(w.get("Rainfall", "")).strip()
+        rain_txt = "Yes" if rain in ("1", "1.0", "True", "true") else "No"
+        return "\n".join([
+            header, "",
+            f"Air: {w.get('AirTemp', '?')}C    Track: {w.get('TrackTemp', '?')}C",
+            f"Humidity: {w.get('Humidity', '?')}%    Pressure: {w.get('Pressure', '?')} mbar",
+            f"Wind: {w.get('WindSpeed', '?')} m/s @ {w.get('WindDirection', '?')} deg",
+            f"Rain: {rain_txt}",
+        ])
+
+    # --- MCP tools (fetch + format) ---
+
     @mcp.tool()
     def get_live_session_status() -> str:
-        """Get current live F1 session status and timing information."""
-        try:
-            # Connect to live timing
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = "🔴 LIVE F1 Session Status:\n\n"
-            
-            # Get session info
-            if hasattr(livedata, 'session_info'):
-                info = livedata.session_info
-                result += f"Session: {info.get('Name', 'Unknown')}\n"
-                result += f"Track: {info.get('Meeting', {}).get('Circuit', 'Unknown')}\n"
-                result += f"Status: {info.get('Status', 'Unknown')}\n\n"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
-    
+        """Live F1 session status: session name, flag/track status, lap count.
+        No auth required. Honest 'no live session' message when nothing is running."""
+        st = _fetch_live(["SessionInfo", "SessionStatus", "TrackStatus", "LapCount"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_status(st)
+
     @mcp.tool()
     def get_live_positions() -> str:
-        """Get current live race positions and gaps."""
-        try:
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = "🏁 LIVE Race Positions:\n\n"
-            
-            # Get position data
-            if hasattr(livedata, 'position_data'):
-                positions = livedata.position_data
-                
-                for pos, driver_data in sorted(positions.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 999):
-                    driver = driver_data.get('Driver', 'Unknown')
-                    gap = driver_data.get('GapToLeader', '0.0')
-                    interval = driver_data.get('IntervalToPositionAhead', '')
-                    
-                    result += f"P{pos}: {driver}"
-                    if gap != '0.0':
-                        result += f" +{gap}s"
-                    if interval:
-                        result += f" (Δ {interval})"
-                    result += "\n"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
-    
+        """Live running order with gap-to-leader and interval. No auth required."""
+        st = _fetch_live(["TimingData", "DriverList", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_positions(st)
+
     @mcp.tool()
     def get_live_lap_times() -> str:
-        """Get latest lap times from live session."""
-        try:
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = "⏱️ LIVE Lap Times:\n\n"
-            
-            # Get timing data
-            if hasattr(livedata, 'timing_data'):
-                timing = livedata.timing_data
-                
-                for driver_num, driver_data in timing.items():
-                    driver = driver_data.get('Driver', f'#{driver_num}')
-                    last_lap = driver_data.get('LastLapTime', {})
-                    
-                    if last_lap:
-                        lap_time = last_lap.get('Value', 'N/A')
-                        personal_best = driver_data.get('BestLapTime', {}).get('Value', 'N/A')
-                        
-                        result += f"{driver}: {lap_time}"
-                        if personal_best != 'N/A':
-                            result += f" (PB: {personal_best})"
-                        result += "\n"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
-    
+        """Live last + best lap time per driver. No auth required."""
+        st = _fetch_live(["TimingData", "DriverList", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_laps(st)
+
     @mcp.tool()
     def get_live_sector_times(driver: str) -> str:
-        """Get live sector times for a specific driver."""
-        try:
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = f"🟣 LIVE Sector Times - {driver}:\n\n"
-            
-            # Find driver in timing data
-            if hasattr(livedata, 'timing_data'):
-                timing = livedata.timing_data
-                
-                driver_data = None
-                for num, data in timing.items():
-                    if data.get('Driver', '').upper() == driver.upper():
-                        driver_data = data
-                        break
-                
-                if driver_data:
-                    sectors = driver_data.get('Sectors', [])
-                    for i, sector in enumerate(sectors, 1):
-                        sector_time = sector.get('Value', 'N/A')
-                        personal_best = sector.get('PersonalFastest', False)
-                        overall_best = sector.get('OverallFastest', False)
-                        
-                        result += f"Sector {i}: {sector_time}"
-                        if personal_best:
-                            result += " 🟢 (PB)"
-                        if overall_best:
-                            result += " 🟣 (Fastest)"
-                        result += "\n"
-                else:
-                    result += f"Driver {driver} not found in live timing"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
-    
-    @mcp.tool()
-    def get_live_telemetry(driver: str) -> str:
-        """Get live telemetry data for a specific driver (speed, throttle, etc)."""
-        try:
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = f"📊 LIVE Telemetry - {driver}:\n\n"
-            
-            # Get car data from live timing
-            if hasattr(livedata, 'car_data'):
-                car_data = livedata.car_data
-                
-                driver_data = None
-                for num, data in car_data.items():
-                    if data.get('Driver', '').upper() == driver.upper():
-                        driver_data = data
-                        break
-                
-                if driver_data:
-                    result += f"Speed: {driver_data.get('Speed', 'N/A')} km/h\n"
-                    result += f"Gear: {driver_data.get('Gear', 'N/A')}\n"
-                    result += f"RPM: {driver_data.get('RPM', 'N/A')}\n"
-                    result += f"Throttle: {driver_data.get('Throttle', 'N/A')}%\n"
-                    result += f"Brake: {driver_data.get('Brake', 'N/A')}\n"
-                    result += f"DRS: {driver_data.get('DRS', 'N/A')}\n"
-                else:
-                    result += f"Driver {driver} not found in live telemetry"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
-    
+        """Live sector times + speed trap for one driver (TLA or car number). No auth required."""
+        st = _fetch_live(["TimingData", "DriverList", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_sectors(st, driver)
+
     @mcp.tool()
     def get_live_weather() -> str:
-        """Get current live weather conditions at the track."""
+        """Live track weather (air/track temp, humidity, wind, rain). No auth required."""
+        st = _fetch_live(["WeatherData", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_weather(st)
+
+    @mcp.tool()
+    def get_live_telemetry(driver: str) -> str:
+        """Live car telemetry (speed/rpm/gear/throttle/brake/DRS) for one driver.
+        Auth-gated: requires a valid F1 TV token (CarData.z) AND cars on track."""
         try:
-            livedata = fastf1.livetiming.data.LiveTimingData()
-            
-            result = "🌤️ LIVE Weather Conditions:\n\n"
-            
-            # Get weather data
-            if hasattr(livedata, 'weather_data'):
-                weather = livedata.weather_data
-                
-                result += f"Air Temp: {weather.get('AirTemp', 'N/A')}°C\n"
-                result += f"Track Temp: {weather.get('TrackTemp', 'N/A')}°C\n"
-                result += f"Humidity: {weather.get('Humidity', 'N/A')}%\n"
-                result += f"Pressure: {weather.get('Pressure', 'N/A')} mbar\n"
-                result += f"Wind Speed: {weather.get('WindSpeed', 'N/A')} m/s\n"
-                result += f"Wind Direction: {weather.get('WindDirection', 'N/A')}°\n"
-                result += f"Rainfall: {weather.get('Rainfall', 'N/A')}\n"
-            
-            return result
-        except Exception as e:
-            return f"No live session active or error: {e}"
+            from auth_setup import load_token
+            token = load_token()
+        except Exception:
+            return (
+                "Live telemetry needs a valid F1 TV token (CarData is auth-gated).\n"
+                "Run: python3 auth_setup.py  then retry during a running session."
+            )
+        try:
+            import jwt
+            from datetime import datetime
+            exp = datetime.fromtimestamp(jwt.decode(token, options={"verify_signature": False}).get("exp", 0))
+            if exp < datetime.now():
+                return (
+                    f"Your F1 TV token expired ({exp:%Y-%m-%d}). "
+                    "Re-authenticate for live telemetry: python3 auth_setup.py"
+                )
+        except Exception:
+            pass
+
+        st = _fetch_live(
+            ["CarData.z", "DriverList", "SessionInfo", "SessionStatus"],
+            settle=4.0, auth_token=token,
+        )
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        is_live, label, raw = _session_label(st)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_telemetry(driver, lap=N) for completed sessions")
+
+        from decompressor import parse_car_data
+        dmap = _driver_map(st)
+        want = (driver or "").strip().upper()
+        num = None
+        for n, d in dmap.items():
+            if n == want or d["tla"].upper() == want:
+                num = n
+                break
+        if num is None:
+            active = ", ".join(sorted(d["tla"] for d in dmap.values())) or "none"
+            return f"Driver '{driver}' not found. Active: {active}"
+
+        # Validated against the FP1 2026 live feed: F1 sends channels 0/2/3/4/5 only
+        # (rpm/speed/gear/throttle/brake). A stationary car reads throttle==brake==104
+        # (a "parked" sentinel) — skip those so we surface a real sample. DRS (channel
+        # 45) is NOT transmitted in the live CarData feed, so report it honestly.
+        rows = [r for r in parse_car_data(st.get("CarData.z") or {}) if r.get("driver_number") == num]
+        # "active" = engine running / car moving. A garaged car streams 0/0 with a
+        # throttle/brake sentinel (e.g. 104) — skip those and show a real sample.
+        active = [r for r in rows if (r.get("rpm") or 0) > 0 or (r.get("speed") or 0) > 0]
+        latest = active[-1] if active else None
+        if not latest:
+            who = dmap[num]["tla"]
+            if rows:
+                return f"{who} is stationary / in the garage — no active telemetry right now."
+            return f"No telemetry streaming for {who} yet (car may be in the garage)."
+        tla = dmap[num]["tla"]
+        thr = latest.get("throttle")
+        thr = min(thr, 100) if isinstance(thr, (int, float)) else thr
+        drs = latest.get("drs")
+        drs_txt = drs if drs is not None else "n/a (no DRS in 2026 — active aero)"
+        return "\n".join([
+            f"\U0001F534 LIVE telemetry - {tla} ({label})", "",
+            f"Speed: {latest.get('speed', '?')} km/h",
+            f"RPM: {latest.get('rpm', '?')}",
+            f"Gear: {latest.get('gear', '?')}",
+            f"Throttle: {thr}%",
+            f"Brake: {latest.get('brake', '?')}",
+            f"DRS: {drs_txt}",
+        ])
+
+    def _format_tyres(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_tyre_strategy / get_starting_tires")
+        dmap = _driver_map(state)
+        tad = (state.get("TimingAppData") or {}).get("Lines", {})
+        abbr = {"SOFT": "S", "MEDIUM": "M", "HARD": "H", "INTERMEDIATE": "I", "WET": "W"}
+        rows = []
+        for num, e in _by_position((state.get("TimingData") or {}).get("Lines", {})):
+            stints = (tad.get(num) or {}).get("Stints") or []
+            if not stints:
+                continue
+            cur = stints[-1]
+            comp = cur.get("Compound", "?")
+            tag = abbr.get(comp, (comp[:1] if comp else "?"))
+            fresh = "new" if str(cur.get("New", "")).lower() == "true" else "used"
+            age = cur.get("TotalLaps", "?")
+            tla = dmap.get(num, {}).get("tla", f"#{num}")
+            rows.append(f"P{e.get('Position', '?')} {tla}: {tag} {comp} ({fresh}, {age} laps, stint {len(stints)})")
+        if not rows:
+            return f"\U0001F534 LIVE - {label}\n(no tyre data yet)"
+        return f"\U0001F534 LIVE tyres - {label}\n\n" + "\n".join(rows)
+
+    @mcp.tool()
+    def get_live_tyres() -> str:
+        """Live tyre compound, age (laps), and stint number per driver. No auth required."""
+        st = _fetch_live(["TimingAppData", "TimingData", "DriverList", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_tyres(st)
 
 # =============================================================================
 # ENTRY POINT
