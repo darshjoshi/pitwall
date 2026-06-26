@@ -2707,7 +2707,7 @@ if FASTF1_AVAILABLE:
     # SessionStatus.Status values meaning cars are (or just were) on track now.
     _LIVE_ON_TRACK = {"Started", "Aborted"}
 
-    def _fetch_live(topics, settle=2.5, auth_token=None):
+    def _fetch_live(topics, settle=3.5, auth_token=None):
         """Connect, grab keyframe + `settle`s of deltas, return {topic: merged_state}.
         Stateless: one connection per call. Returns {"_error": msg} on failure."""
         import asyncio
@@ -2729,7 +2729,13 @@ if FASTF1_AVAILABLE:
                 await asyncio.wait_for(task, timeout=3)
             except Exception:
                 pass
-            return {t: client.get_state(t) for t in topics}
+            result = {t: client.get_state(t) for t in topics}
+            # All-None means no keyframe ever arrived (connect failed, or it timed out).
+            # connect() swallows ConnectionError/OSError internally, so without this check a
+            # hard connection failure is indistinguishable from "session genuinely not running."
+            if all(v is None for v in result.values()):
+                return {"_error": "no data received — live timing may be offline or between sessions"}
+            return result
 
         try:
             return asyncio.run(_run())
@@ -2765,7 +2771,7 @@ if FASTF1_AVAILABLE:
         # F1 deltas sometimes arrive as index-keyed dicts ({"0":..,"1":..}) instead of
         # lists; normalize so [-1] / enumerate work regardless of form.
         if isinstance(x, dict):
-            return [x[k] for k in sorted(x, key=lambda k: int(k) if str(k).isdigit() else 0)]
+            return [x[k] for k in sorted(x, key=lambda k: int(k) if str(k).isdigit() else 1 << 30)]
         return x or []
 
     def _not_live_msg(label, raw, alt):
@@ -2985,7 +2991,7 @@ if FASTF1_AVAILABLE:
             return f"No telemetry streaming for {who} yet (car may be in the garage)."
         tla = dmap[num]["tla"]
         thr = latest.get("throttle")
-        thr = min(thr, 100) if isinstance(thr, (int, float)) else thr
+        thr = min(thr, 100) if isinstance(thr, (int, float)) else "?"
         drs = latest.get("drs")
         drs_txt = drs if drs is not None else "n/a (no DRS in 2026 — active aero)"
         return "\n".join([
@@ -3312,7 +3318,8 @@ if FASTF1_AVAILABLE:
             rows.append(f"{tla}  {'  '.join(sec_strs)}")
         if not rows:
             return f"\U0001F534 LIVE mini-sectors - {label}\n(no segment data yet)"
-        return f"\U0001F534 LIVE mini-sectors - {label}\n\n" + "\n".join(rows)
+        legend = "\n\nLegend: g=personal-best  p=overall-best  y=yellow  .=no data"
+        return f"\U0001F534 LIVE mini-sectors - {label}\n\n" + "\n".join(rows) + legend
 
     @mcp.tool()
     def get_live_mini_sectors() -> str:
@@ -3335,7 +3342,7 @@ if FASTF1_AVAILABLE:
         if not last:
             return f"\U0001F534 LIVE GPS positions - {label}\n(no position data yet)"
         rows_out = []
-        for num, r in sorted(last.items()):
+        for num, r in sorted(last.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 999):
             tla = dmap.get(num, {}).get("tla", f"#{num}")
             rows_out.append(f"{tla}: x={r.get('x')} y={r.get('y')} ({r.get('status', '')})")
         return f"\U0001F534 LIVE GPS positions - {label}\n\n" + "\n".join(rows_out)
