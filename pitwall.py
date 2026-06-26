@@ -562,7 +562,12 @@ def get_pit_stops(year: int = 2026, race: str = "", session_type: str = "Race") 
         dm = _driver_map(path)
         try:
             pit_times = _get_keyframe(path, "PitStopSeries").get("PitTimes", {})
-        except ValueError:
+        except ValueError as e:
+            # _get_keyframe raises a bare ValueError only when the feed is absent (pre-2025).
+            # JSONDecodeError / binascii.Error are ValueError subclasses signalling a real
+            # parse/decode failure — let those propagate to the outer handler instead.
+            if type(e) is not ValueError:
+                raise
             # F1's PitStopSeries (stationary times) only exists from 2025 onward.
             return (f"Pit stop times aren't available for {race_name} {year} — F1's "
                     f"PitStopSeries feed only covers 2025 onward. For earlier seasons, "
