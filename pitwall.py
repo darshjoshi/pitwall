@@ -2931,8 +2931,11 @@ if FASTF1_AVAILABLE:
 
     @mcp.tool()
     def get_live_telemetry(driver: str) -> str:
-        """Live car telemetry (speed/rpm/gear/throttle/brake/DRS) for one driver.
-        Auth-gated: requires a valid F1 TV token (CarData.z) AND cars on track."""
+        """Live car telemetry — the LATEST single sample (speed/rpm/gear/throttle/brake) for
+        one driver: a snapshot of the current instant, NOT a lap trace and NOT resolved to a
+        track corner. No DRS in 2026 (active aero). Auth-gated: needs a valid F1 TV token
+        (CarData.z) AND cars on track. For a corner-by-corner lap trace use the post-session
+        tool get_telemetry(driver, lap=N)."""
         try:
             from auth_setup import load_token
             token = load_token()
@@ -3349,7 +3352,9 @@ if FASTF1_AVAILABLE:
 
     @mcp.tool()
     def get_live_gps_positions() -> str:
-        """Live circuit-relative GPS coordinates (x/y integers) for every car. Requires a valid F1 TV token."""
+        """Live circuit-relative GPS coordinates — raw x/y integers for every car, a snapshot of
+        the current instant. NOT mapped to named corners (no x/y-to-corner model). Requires a
+        valid F1 TV token."""
         try:
             from auth_setup import load_token
             token = load_token()
