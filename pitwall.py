@@ -3022,6 +3022,77 @@ if FASTF1_AVAILABLE:
             return f"Could not reach live timing: {st['_error']}"
         return _format_tyres(st)
 
+    def _rc_messages(state):
+        msgs = (state.get("RaceControlMessages") or {}).get("Messages")
+        if isinstance(msgs, dict):  # delta-merged form is keyed by index
+            return [msgs[k] for k in sorted(msgs, key=lambda x: int(x) if str(x).isdigit() else 0)]
+        return msgs or []
+
+    def _format_race_control(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_race_control / get_race_control_messages")
+        msgs = _rc_messages(state)
+        if not msgs:
+            return f"\U0001F534 LIVE race control - {label}\n(no messages yet)"
+        out = [f"\U0001F534 LIVE race control - {label}", ""]
+        for m in msgs[-12:][::-1]:  # newest first
+            t = (m.get("Utc", "") or "")[11:19]
+            flag = m.get("Flag") or m.get("Category") or ""
+            msg = (m.get("Message", "") or "").strip()
+            out.append(f"[{t}] {flag}: {msg}" if flag and flag not in msg else f"[{t}] {msg}")
+        return "\n".join(out)
+
+    @mcp.tool()
+    def get_live_race_control() -> str:
+        """Live race control: flags, penalties, track-limit deletions, SC/VSC. No auth required."""
+        st = _fetch_live(["RaceControlMessages", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_race_control(st)
+
+    def _format_speed_trap(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_speed_traps / get_speed_trap_comparison")
+        dmap = _driver_map(state)
+        rows = []
+        for num, e in (state.get("TimingStats") or {}).get("Lines", {}).items():
+            val = ((e.get("BestSpeeds") or {}).get("ST") or {}).get("Value")
+            if val and str(val).isdigit():
+                rows.append((int(val), dmap.get(num, {}).get("tla", f"#{num}")))
+        rows.sort(reverse=True)
+        if not rows:
+            return f"\U0001F534 LIVE speed trap - {label}\n(no speeds yet)"
+        out = [f"\U0001F534 LIVE speed trap (ST / finish line) - {label}", ""]
+        out += [f"{i}. {tla}  {val} km/h" for i, (val, tla) in enumerate(rows, 1)]
+        return "\n".join(out)
+
+    @mcp.tool()
+    def get_live_speed_trap() -> str:
+        """Live speed-trap (ST) ranking across the whole field. No auth required."""
+        st = _fetch_live(["TimingStats", "DriverList", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_speed_trap(st)
+
+    def _format_session_clock(state):
+        is_live, label, raw = _session_label(state)
+        if not is_live:
+            return _not_live_msg(label, raw, "get_session_info")
+        clk = state.get("ExtrapolatedClock") or {}
+        rem = clk.get("Remaining", "?")
+        note = " (counting down)" if clk.get("Extrapolating") else " (clock stopped)"
+        return f"\U0001F534 LIVE - {label}\nTime remaining: {rem}{note}"
+
+    @mcp.tool()
+    def get_live_session_clock() -> str:
+        """Live time remaining in the current session. No auth required."""
+        st = _fetch_live(["ExtrapolatedClock", "SessionInfo", "SessionStatus"])
+        if "_error" in st:
+            return f"Could not reach live timing: {st['_error']}"
+        return _format_session_clock(st)
+
 # =============================================================================
 # ENTRY POINT
 # =============================================================================
