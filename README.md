@@ -3,7 +3,7 @@
 
 <p align="center">
   <strong>Turn Claude into your F1 race engineer.</strong><br>
-  Real telemetry. Real strategy data. Real-time during races. 75 years of history.
+  Real telemetry. Real strategy data. 75 years of history.
 </p>
 
 <p align="center">
@@ -50,13 +50,13 @@ claude mcp add pitwall -- python3 $(pwd)/pitwall.py
 
 Claude knows F1 from training data — but it can't look up last week's race. It can't show you Verstappen's throttle trace through Turn 1. It doesn't know who pitted first or when the safety car came out.
 
-Pitwall connects Claude to **live F1 data**:
+Pitwall connects Claude to **real F1 data**:
 
 - **Real data, not hallucinations** — actual timing feeds from formula1.com
 - **Lap-level telemetry** — speed, RPM, throttle, brake, gear, DRS at 4Hz per car
 - **Visual plots** — speed trace comparisons, gear shift maps returned as images
 - **75 years of history** — every race result and championship since 1950
-- **Live during races** — real-time positions, gaps, weather, and race control
+- **Fresh after every session** — full telemetry and timing published ~30 min after each session ends, back to 2018
 - **Zero API keys** — all core data is free, no account needed
 
 ---
@@ -122,7 +122,6 @@ Everything in Lite, plus:
 | **Deep Telemetry** | Brake point analysis, RPM patterns, DRS usage, throttle traces |
 | **Advanced Strategy** | Stint degradation, compound comparisons, tire age performance |
 | **Race Intelligence** | Overtake detection, gap tracking, position changes, qualifying progression |
-| **Live Data** | Real-time positions, lap times, sector times, weather during active sessions |
 
 <details>
 <summary><strong>Full tool list (67 tools)</strong></summary>
@@ -158,7 +157,7 @@ Everything in Lite, plus:
 | **Track & Safety** | `get_circuit_info`, `get_track_status`, `get_track_record`, `get_race_control_messages`, `get_penalties`, `get_dnf_list` |
 | **Speed & Position** | `get_speed_trap_comparison`, `get_position_changes`, `get_gap_to_leader` |
 | **History** | `get_race_winners_history` |
-| **Live Data** | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
+| **Live Data** _(experimental — not yet wired to the live feed)_ | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
 | **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
 
 </details>
@@ -293,6 +292,8 @@ python3 pitwall.py --http --port 3000
 ## Live Race Data
 
 Pitwall includes a raw SignalR Core WebSocket client for real-time data during active F1 sessions. Most data is free — car telemetry and GPS require an F1 TV Pro or Premium subscription.
+
+> **Note:** This is a standalone Python client (`signalr_client.py`), shown below. The `get_live_*` MCP tools are experimental and not yet wired to it, so live data through Claude is still on the roadmap. Today, full session data — telemetry, timing, strategy — is available through the main tools ~30 minutes after each session ends.
 
 <details>
 <summary><strong>What's free vs what needs F1 TV</strong></summary>
