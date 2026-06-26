@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 .env
 .f1token
+.mcpregistry_github_token
+.mcpregistry_registry_token
 venv/
 .venv/
 *.egg-info/
