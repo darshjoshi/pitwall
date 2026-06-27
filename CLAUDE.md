@@ -2,11 +2,11 @@
 
 ## What This Is
 
-Pitwall is an F1 MCP server with 67 tools. It provides Formula 1 data to Claude via the Model Context Protocol.
+Pitwall is an F1 MCP server with 79 tools. It provides Formula 1 data to Claude via the Model Context Protocol.
 
 ## Key Architecture
 
-- `pitwall.py` — MCP server (67 tools). Auto-degrades: 14 tools without FastF1, 67 with it.
+- `pitwall.py` — MCP server (79 tools). Auto-degrades: 30 tools without FastF1 (incl. 16 no-auth live-timing tools), 79 with it. Live car telemetry + GPS are auth-gated and full-only.
 - `signalr_client.py` — Raw SignalR Core WebSocket client for live race data during sessions.
 - `decompressor.py` — Zlib decompression for CarData.z (telemetry) and Position.z (GPS).
 - `merger.py` — Deep-merge for F1's incremental JSON delta format.
@@ -34,8 +34,8 @@ At sprint weekends, both Sprint and Race have `Type="Race"` in F1's data. The se
 ## Installation
 
 ```bash
-pip install f1pitwall              # Lite (14 tools)
-pip install "f1pitwall[full]"      # Full (67 tools)
+pip install f1pitwall              # Lite (30 tools, incl. live timing)
+pip install "f1pitwall[full]"      # Full (79 tools)
 ```
 
 ## Running

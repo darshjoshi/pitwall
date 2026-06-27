@@ -37,7 +37,7 @@ Then ask Claude: *"Who won the 2025 Australian GP?"*
 
 ```bash
 git clone https://github.com/darshjoshi/pitwall.git && cd pitwall
-pip install "mcp[cli]" requests        # lite
+pip install "mcp[cli]" requests websockets aiohttp certifi   # lite (incl. live timing)
 pip install -r requirements-full.txt   # full
 claude mcp add pitwall -- python3 $(pwd)/pitwall.py
 ```
@@ -102,15 +102,15 @@ Pitwall connects Claude to **real F1 data**:
 
 ## Features
 
-**67 tools** across two modes. Pitwall auto-detects what's installed — no config changes needed.
+**79 tools** across two modes. Pitwall auto-detects what's installed — no config changes needed.
 
-### Lite Mode (14 tools)
+### Lite Mode (30 tools)
 
-`pip install "mcp[cli]" requests` — no heavy dependencies.
+`pip install f1pitwall` — light deps only (`mcp`, `requests`, plus `websockets`/`aiohttp` for live timing); no pandas/numpy/FastF1.
 
-Race results, lap times, telemetry, tyre strategy, pit stops, weather, race control, speed traps, driver comparison, and historical data back to 1950. Uses F1's free static archive and the Jolpica API.
+Race results, lap times, telemetry, tyre strategy, pit stops, weather, race control, speed traps, driver comparison, and historical data back to 1950. **Plus 16 live-timing tools** (running order, gaps, lap/sector times, tyres, weather, race control, speed traps, mini-sectors, …) that read F1's real-time SignalR feed during a session — no auth needed. (Live car telemetry + GPS are auth-gated and live in Full mode.) Uses F1's free static archive and the Jolpica API.
 
-### Full Mode (67 tools)
+### Full Mode (79 tools)
 
 `pip install -r requirements-full.txt` — adds [FastF1](https://github.com/theOehrly/Fast-F1).
 
@@ -124,7 +124,7 @@ Everything in Lite, plus:
 | **Race Intelligence** | Overtake detection, gap tracking, position changes, qualifying progression |
 
 <details>
-<summary><strong>Full tool list (67 tools)</strong></summary>
+<summary><strong>Full tool list (79 tools)</strong></summary>
 
 #### Lite Tools (always available)
 | Tool | Description |
@@ -144,6 +144,26 @@ Everything in Lite, plus:
 | `get_historical_results` | Race results from 1950 to present |
 | `get_championship_standings` | Driver/constructor championships from 1950+ |
 
+#### Live Timing (lite — no auth, reads F1's real-time SignalR feed during a session)
+| Tool | Description |
+|------|-------------|
+| `get_live_session_status` | Session name, flag/track status, lap count |
+| `get_live_positions` | Live running order with gap + interval |
+| `get_live_lap_times` | Last + best lap per driver |
+| `get_live_sector_times` | Sector times + speed trap for one driver |
+| `get_live_time_gaps` | Gap to leader + interval to car ahead (mode-aware) |
+| `get_live_best_sectors` | Personal-best sectors + best lap, ranked |
+| `get_live_speed_trap` | Speed-trap (ST) ranking across the field |
+| `get_live_speed_comparison` | Best speed at I1/I2/FL/ST per driver |
+| `get_live_tyres` | Compound, age (laps), stint number per driver |
+| `get_live_stint_history` | Full compound sequence per driver |
+| `get_live_pit_activity` | Pit count + in-pit / out-lap flags |
+| `get_live_weather` | Air/track temp, humidity, wind, rain |
+| `get_live_race_control` | Flags, penalties, track-limit deletions, SC/VSC |
+| `get_live_session_clock` | Time remaining in the session |
+| `get_live_track_status_history` | Chronological track/session status log |
+| `get_live_mini_sectors` | Mini-sector status (green/purple/yellow) per driver |
+
 #### FastF1 Tools (requires FastF1)
 | Category | Tools |
 |----------|-------|
@@ -157,7 +177,7 @@ Everything in Lite, plus:
 | **Track & Safety** | `get_circuit_info`, `get_track_status`, `get_track_record`, `get_race_control_messages`, `get_penalties`, `get_dnf_list` |
 | **Speed & Position** | `get_speed_trap_comparison`, `get_position_changes`, `get_gap_to_leader` |
 | **History** | `get_race_winners_history` |
-| **Live Data** _(experimental — not yet wired to the live feed)_ | `get_live_session_status`, `get_live_positions`, `get_live_lap_times`, `get_live_sector_times`, `get_live_telemetry`, `get_live_weather` |
+| **Live (auth-gated)** | `get_live_telemetry`, `get_live_gps_positions` — live car telemetry + GPS, need an F1 TV token |
 | **Session** | `get_schedule`, `get_session_info`, `get_weather_data` |
 
 </details>
@@ -293,7 +313,7 @@ python3 pitwall.py --http --port 3000
 
 Pitwall includes a raw SignalR Core WebSocket client for real-time data during active F1 sessions. Most data is free — car telemetry and GPS require an F1 TV Pro or Premium subscription.
 
-> **Note:** This is a standalone Python client (`signalr_client.py`), shown below. The `get_live_*` MCP tools are experimental and not yet wired to it, so live data through Claude is still on the roadmap. Today, full session data — telemetry, timing, strategy — is available through the main tools ~30 minutes after each session ends.
+> **Note:** The `get_live_*` MCP tools read this client's live SignalR feed directly. 16 timing tools (running order, gaps, lap/sector times, tyres, weather, race control, speed traps, mini-sectors, …) work in the **lite** install with **no auth**; live car telemetry and GPS (`get_live_telemetry`, `get_live_gps_positions`) need an F1 TV token and ship in the **full** install. Post-session data — telemetry, timing, strategy — also remains available through the main tools after each session ends.
 
 <details>
 <summary><strong>What's free vs what needs F1 TV</strong></summary>
@@ -402,7 +422,7 @@ ALB = Albon         HUL = Hulkenberg  COL = Colapinto  LIN = Lindblad
 
 | File | Purpose |
 |------|---------|
-| `pitwall.py` | MCP server — 67 tools, auto-degrades to 14 without FastF1 |
+| `pitwall.py` | MCP server — 79 tools, auto-degrades to 30 without FastF1 |
 | `signalr_client.py` | Raw SignalR Core WebSocket client for live race data |
 | `decompressor.py` | Zlib decompression for CarData.z / Position.z |
 | `merger.py` | Keyframe + delta state management for F1's incremental format |
