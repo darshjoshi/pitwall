@@ -102,15 +102,15 @@ Pitwall connects Claude to **real F1 data**:
 
 ## Features
 
-**67 tools** across two modes. Pitwall auto-detects what's installed — no config changes needed.
+**79 tools** across two modes. Pitwall auto-detects what's installed — no config changes needed.
 
-### Lite Mode (14 tools)
+### Lite Mode (30 tools)
 
-`pip install "mcp[cli]" requests` — no heavy dependencies.
+`pip install f1pitwall` — light deps only (`mcp`, `requests`, plus `websockets`/`aiohttp` for live timing); no pandas/numpy/FastF1.
 
-Race results, lap times, telemetry, tyre strategy, pit stops, weather, race control, speed traps, driver comparison, and historical data back to 1950. Uses F1's free static archive and the Jolpica API.
+Race results, lap times, telemetry, tyre strategy, pit stops, weather, race control, speed traps, driver comparison, and historical data back to 1950. **Plus 16 live-timing tools** (running order, gaps, lap/sector times, tyres, weather, race control, speed traps, mini-sectors, …) that read F1's real-time SignalR feed during a session — no auth needed. (Live car telemetry + GPS are auth-gated and live in Full mode.) Uses F1's free static archive and the Jolpica API.
 
-### Full Mode (67 tools)
+### Full Mode (79 tools)
 
 `pip install -r requirements-full.txt` — adds [FastF1](https://github.com/theOehrly/Fast-F1).
 
@@ -124,7 +124,7 @@ Everything in Lite, plus:
 | **Race Intelligence** | Overtake detection, gap tracking, position changes, qualifying progression |
 
 <details>
-<summary><strong>Full tool list (67 tools)</strong></summary>
+<summary><strong>Full tool list (79 tools)</strong></summary>
 
 #### Lite Tools (always available)
 | Tool | Description |
@@ -402,7 +402,7 @@ ALB = Albon         HUL = Hulkenberg  COL = Colapinto  LIN = Lindblad
 
 | File | Purpose |
 |------|---------|
-| `pitwall.py` | MCP server — 67 tools, auto-degrades to 14 without FastF1 |
+| `pitwall.py` | MCP server — 79 tools, auto-degrades to 30 without FastF1 |
 | `signalr_client.py` | Raw SignalR Core WebSocket client for live race data |
 | `decompressor.py` | Zlib decompression for CarData.z / Position.z |
 | `merger.py` | Keyframe + delta state management for F1's incremental format |
