@@ -3412,8 +3412,11 @@ def main():
         print('  pip install "f1pitwall[full]"')
         print()
     if args.http:
+        # FastMCP.run() takes no host/port; they live on settings (mcp >=1.x dropped the kwargs).
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
         print(f"Pitwall ({mode}) starting on {args.host}:{args.port}")
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+        mcp.run(transport="streamable-http")
     else:
         print(f"Pitwall ({mode}) starting (stdio)")
         mcp.run(transport="stdio")
