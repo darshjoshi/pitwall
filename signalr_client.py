@@ -335,6 +335,7 @@ class F1LiveClient:
                 return decompress_z_data(data)
             except Exception as e:
                 logger.warning(f"Decompression failed for {topic}: {e}")
+                return {}  # never hand the raw base64 string downstream — parsers expect a dict
         return data
 
     def _dispatch(self, topic: str, data: Any, timestamp: str):
