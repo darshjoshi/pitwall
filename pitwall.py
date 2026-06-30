@@ -99,9 +99,26 @@ _http.headers.update({"User-Agent": "Pitwall/1.0"})
 
 def _get_json(path: str) -> dict:
     resp = _http.get(f"{STATIC_BASE}/{path}", timeout=15)
+    if resp.status_code in (403, 404):
+        # F1's static archive only covers 2018-2021 and 2023-present; other years 403/404.
+        yr = path.split("/", 1)[0]
+        raise ValueError(
+            f"Season {yr} isn't in F1's free static archive (covers 2018-2021, 2023-present). "
+            "Use get_championship_standings or get_historical_results for other seasons."
+        )
     resp.raise_for_status()
     resp.encoding = "utf-8-sig"
     return resp.json()
+
+
+def _ff1_error(e, year=None, gp=None) -> str:
+    """Friendly message for FastF1's developer-facing 'not loaded' / 'does not exist' errors,
+    which surface when a session has no data yet (future/just-run) or the GP name is wrong."""
+    m = str(e)
+    if "has not been loaded" in m or "does not exist" in m or "Failed to load" in m:
+        where = f" for {gp} {year}" if gp else ""
+        return f"No FastF1 data available{where} yet (sessions appear ~30-60 min after they run)."
+    return f"Error: {m}"
 
 
 def _find_session(year: int, race: str, session_type: str = "Race") -> tuple:
@@ -225,7 +242,9 @@ def list_seasons() -> str:
                 lines.append(f"  {year}: {n} events")
             except Exception:
                 pass
-        return "Available seasons:\n" + "\n".join(lines)
+        return ("Available seasons:\n" + "\n".join(lines) +
+                "\n\nNote: F1's static archive is missing 2022 and early-2024 — use "
+                "get_championship_standings / get_historical_results for those seasons.")
     except Exception as e:
         return f"Error: {e}"
 
@@ -342,6 +361,8 @@ def get_lap_times(year: int = 2026, race: str = "", driver: str = "",
 
         dm = _driver_map(path)
         target = _find_driver_num(driver, dm) if driver else None
+        if driver and target is None:
+            return f"Driver '{driver.upper()}' not found in this session."
         feeds = _get_json(f"{path}Index.json").get("Feeds", {})
         sp = feeds.get("TimingData", {}).get("StreamPath", "")
         if not sp:
@@ -742,6 +763,34 @@ def get_driver_comparison(driver_a: str, driver_b: str, year: int = 2026,
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 
 
+def _jolpica_races(url_base, max_races=25):
+    """Fetch Ergast/Jolpica race results across pages. Jolpica caps `limit` at 100 and paginates
+    the flat Result list, so a single race can straddle a page boundary — merge Results by round.
+    Bounded to max_races (the caller displays races[:20])."""
+    by_round, order = {}, []
+    offset = 0
+    while True:
+        mr = requests.get(f"{url_base}?limit=100&offset={offset}", timeout=10).json().get("MRData", {})
+        page = mr.get("RaceTable", {}).get("Races", [])
+        if not page:
+            break
+        for r in page:
+            key = (r.get("season"), r.get("round"))
+            if key in by_round:
+                by_round[key].setdefault("Results", []).extend(r.get("Results", []))
+            else:
+                by_round[key] = r
+                order.append(key)
+        offset += 100
+        try:
+            total = int(mr.get("total", 0))
+        except (TypeError, ValueError):
+            total = 0
+        if offset >= total or len(order) >= max_races:
+            break
+    return [by_round[k] for k in order]
+
+
 @mcp.tool()
 def get_historical_results(year: int = 0, race: str = "", driver: str = "") -> str:
     """Get historical F1 race results from 1950 to present.
@@ -757,23 +806,26 @@ def get_historical_results(year: int = 0, race: str = "", driver: str = "") -> s
         if race and not circuit_id:
             return (f"Couldn't map '{race}' to a circuit. Try a circuit or country name "
                     f"like 'monza', 'monaco', 'silverstone', 'spain'.")
+        # Jolpica/Ergast caps `limit` at 100 and paginates the flat Result list (~20 entries
+        # per race), so a single fetch truncated whole seasons to ~5 races. _jolpica_races
+        # pages through and merges by round; output is still capped at races[:20] below.
         if year and driver and circuit_id:
-            url = f"{JOLPICA}/{year}/drivers/{driver}/circuits/{circuit_id}/results.json?limit=30"
+            url = f"{JOLPICA}/{year}/drivers/{driver}/circuits/{circuit_id}/results.json"
         elif driver and circuit_id:
-            url = f"{JOLPICA}/drivers/{driver}/circuits/{circuit_id}/results.json?limit=30"
+            url = f"{JOLPICA}/drivers/{driver}/circuits/{circuit_id}/results.json"
         elif year and driver:
-            url = f"{JOLPICA}/{year}/drivers/{driver}/results.json?limit=50"
+            url = f"{JOLPICA}/{year}/drivers/{driver}/results.json"
         elif year and circuit_id:
-            url = f"{JOLPICA}/{year}/circuits/{circuit_id}/results.json?limit=30"
+            url = f"{JOLPICA}/{year}/circuits/{circuit_id}/results.json"
         elif year:
-            url = f"{JOLPICA}/{year}/results.json?limit=30"
+            url = f"{JOLPICA}/{year}/results.json"
         elif circuit_id:
-            url = f"{JOLPICA}/circuits/{circuit_id}/results.json?limit=30"
+            url = f"{JOLPICA}/circuits/{circuit_id}/results.json"
         elif driver:
-            url = f"{JOLPICA}/drivers/{driver}/results.json?limit=30"
+            url = f"{JOLPICA}/drivers/{driver}/results.json"
         else:
-            url = f"{JOLPICA}/current/results.json?limit=30"
-        races = requests.get(url, timeout=10).json().get("MRData", {}).get("RaceTable", {}).get("Races", [])
+            url = f"{JOLPICA}/current/results.json"
+        races = _jolpica_races(url)
         if not races:
             if circuit_id:
                 where = f" at {race}" + (f" in {year}" if year else "")
@@ -959,7 +1011,7 @@ if FASTF1_AVAILABLE:
         try:
             s = fastf1.get_session(year, gp, session)
             s.load(telemetry=False)
-            lap = s.laps.pick_driver(driver).pick_fastest()
+            lap = s.laps.pick_drivers(driver).pick_fastest()
 
             if lap is None or pd.isna(lap['LapTime']):
                 return f"No qualifying lap found for {driver} in {gp} {year} {session}. The driver may have been eliminated in an earlier session."
@@ -990,8 +1042,8 @@ if FASTF1_AVAILABLE:
             s = fastf1.get_session(year, gp, session)
             s.load()
     
-            d1 = s.laps.pick_driver(driver1).pick_fastest()
-            d2 = s.laps.pick_driver(driver2).pick_fastest()
+            d1 = s.laps.pick_drivers(driver1).pick_fastest()
+            d2 = s.laps.pick_drivers(driver2).pick_fastest()
             
             t1 = d1.get_car_data().add_distance()
             t2 = d2.get_car_data().add_distance()
@@ -1198,7 +1250,7 @@ if FASTF1_AVAILABLE:
             s.load()
             
             # Get the driver's laps
-            driver_laps = s.laps.pick_driver(driver)
+            driver_laps = s.laps.pick_drivers(driver)
             if driver_laps.empty:
                 raise ValueError(f"No laps found for driver {driver}")
             
@@ -1276,14 +1328,18 @@ if FASTF1_AVAILABLE:
     def get_circuit_info(year: int, gp: str) -> str:
         """Get track layout info (Corners, DRS Zones)."""
         try:
+            try:
+                fastf1.get_event(year, gp)
+            except Exception:
+                return f"Circuit '{gp}' not found for {year}. Use get_schedule({year}) for valid GP names."
             s = fastf1.get_session(year, gp, 'Q')
             s.load(laps=True, telemetry=True) # Telemetry needed for circuit info
             info = s.get_circuit_info()
-            
+
             corners = info.corners[['Number', 'Letter', 'Angle', 'Distance']].to_string(index=False)
             return f"Circuit Rotation: {info.rotation} degrees\n\nCorners:\n{corners}"
         except Exception as e:
-            return f"Circuit Info Error: {e}"
+            return _ff1_error(e, year, gp)
     
     # ==============================================================================
     # MODULE 5: TYRE STRATEGY
@@ -1295,7 +1351,7 @@ if FASTF1_AVAILABLE:
         try:
             s = fastf1.get_session(year, gp, 'R')
             s.load()
-            laps = s.laps.pick_driver(driver)
+            laps = s.laps.pick_drivers(driver)
             
             stints = laps.groupby('Stint').agg({
                 'Compound': 'first',
@@ -1493,14 +1549,14 @@ if FASTF1_AVAILABLE:
                 time1 = lap1[sector].total_seconds()
                 time2 = lap2[sector].total_seconds()
                 diff = time1 - time2
-                faster = driver1 if diff < 0 else driver2
-                result += f"Sector {i}: {time1:.3f}s vs {time2:.3f}s (Δ {abs(diff):.3f}s, {faster} faster)\n"
-            
+                verdict = "equal" if diff == 0 else f"{driver1 if diff < 0 else driver2} faster"
+                result += f"Sector {i}: {time1:.3f}s vs {time2:.3f}s (Δ {abs(diff):.3f}s, {verdict})\n"
+
             total1 = lap1['LapTime'].total_seconds()
             total2 = lap2['LapTime'].total_seconds()
             diff_total = total1 - total2
-            faster_total = driver1 if diff_total < 0 else driver2
-            result += f"\nTotal: {total1:.3f}s vs {total2:.3f}s (Δ {abs(diff_total):.3f}s, {faster_total} faster)"
+            verdict_total = "equal" if diff_total == 0 else f"{driver1 if diff_total < 0 else driver2} faster"
+            result += f"\nTotal: {total1:.3f}s vs {total2:.3f}s (Δ {abs(diff_total):.3f}s, {verdict_total})"
             
             return result
         except Exception as e:
@@ -2407,7 +2463,7 @@ if FASTF1_AVAILABLE:
             current_run = []
             
             for idx, lap in laps.iterrows():
-                if pd.notna(lap['LapTime']) and not lap.get('PitInTime'):
+                if pd.notna(lap['LapTime']) and pd.isna(lap.get('PitInTime', pd.NaT)):
                     current_run.append(lap)
                 else:
                     if len(current_run) >= 5:  # At least 5 consecutive laps
@@ -2433,8 +2489,8 @@ if FASTF1_AVAILABLE:
             
             return result
         except Exception as e:
-            return f"Error: {str(e)}"
-    
+            return _ff1_error(e, year, gp)
+
     # ==============================================================================
     # MODULE 31: HEAD-TO-HEAD COMPARISON
     # ==============================================================================
@@ -2724,7 +2780,20 @@ def _fetch_live(topics, settle=3.5, auth_token=None):
             auth_token=auth_token,
         )
         task = asyncio.create_task(client.connect())
-        await asyncio.sleep(settle)
+        # Settle window: wait for the keyframe + a few seconds of deltas. Off-session this is
+        # wasted (most days no session is live), so on the no-auth path bail out early once a
+        # keyframe with session status has arrived and it's clearly not live. Live sessions
+        # (and any auth fetch) still get the full window.
+        waited = 0.0
+        while waited < settle:
+            await asyncio.sleep(0.25)
+            waited += 0.25
+            if auth_token is None:
+                snap = {t: client.get_state(t) for t in topics}
+                if snap.get("SessionStatus") is not None or snap.get("SessionInfo") is not None:
+                    is_live, _, _ = _session_label(snap)
+                    if not is_live:
+                        break
         await client.stop()
         try:
             await asyncio.wait_for(task, timeout=3)
@@ -2873,10 +2942,12 @@ def _format_sectors(state, driver):
 
 def _format_weather(state):
     is_live, label, raw = _session_label(state)
+    if not is_live:
+        return _not_live_msg(label, raw, "get_weather")
     w = state.get("WeatherData") or {}
     if not w:
         return _not_live_msg(label, raw, "get_weather")
-    header = f"\U0001F534 LIVE weather - {label}" if is_live else f"Weather (last session: {label} - NOT live)"
+    header = f"\U0001F534 LIVE weather - {label}"
     rain = str(w.get("Rainfall", "")).strip()
     rain_txt = "Yes" if rain in ("1", "1.0", "True", "true") else "No"
     return "\n".join([
@@ -3292,7 +3363,8 @@ if FASTF1_AVAILABLE:
         except Exception:
             return (
                 "Live telemetry needs a valid F1 TV token (CarData is auth-gated).\n"
-                "Run: python3 auth_setup.py  then retry during a running session."
+                "Run: python3 auth_setup.py to enable it — live car telemetry only returns "
+                "data while a session is running."
             )
         try:
             import jwt
@@ -3368,7 +3440,8 @@ if FASTF1_AVAILABLE:
         except Exception:
             return (
                 "Live GPS positions needs a valid F1 TV token (Position.z is auth-gated).\n"
-                "Run: python3 auth_setup.py  then retry during a running session."
+                "Run: python3 auth_setup.py to enable it — live GPS only returns data while a "
+                "session is running."
             )
         try:
             import jwt
@@ -3408,17 +3481,18 @@ def main():
 
     mode = "full" if FASTF1_AVAILABLE else "lite"
     if not FASTF1_AVAILABLE:
-        print("Pitwall (lite) — 30 tools loaded (incl. live timing). For 79 tools with plots, deep analysis, and live car telemetry:")
-        print('  pip install "f1pitwall[full]"')
-        print()
+        # stderr, not stdout: stdout is the JSON-RPC channel for stdio MCP clients.
+        print("Pitwall (lite) — 30 tools loaded (incl. live timing). For 79 tools with plots, deep analysis, and live car telemetry:", file=sys.stderr)
+        print('  pip install "f1pitwall[full]"', file=sys.stderr)
+        print(file=sys.stderr)
     if args.http:
         # FastMCP.run() takes no host/port; they live on settings (mcp >=1.x dropped the kwargs).
         mcp.settings.host = args.host
         mcp.settings.port = args.port
-        print(f"Pitwall ({mode}) starting on {args.host}:{args.port}")
+        print(f"Pitwall ({mode}) starting on {args.host}:{args.port}", file=sys.stderr)
         mcp.run(transport="streamable-http")
     else:
-        print(f"Pitwall ({mode}) starting (stdio)")
+        print(f"Pitwall ({mode}) starting (stdio)", file=sys.stderr)
         mcp.run(transport="stdio")
 
 
