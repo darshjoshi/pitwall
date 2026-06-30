@@ -99,12 +99,18 @@ _http.headers.update({"User-Agent": "Pitwall/1.0"})
 
 def _get_json(path: str) -> dict:
     resp = _http.get(f"{STATIC_BASE}/{path}", timeout=15)
-    if resp.status_code in (403, 404):
-        # F1's static archive only covers 2018-2021 and 2023-present; other years 403/404.
+    if resp.status_code == 403:
+        # F1's static archive 403s whole unsupported seasons (no 2022; pre-2018; future years).
         yr = path.split("/", 1)[0]
         raise ValueError(
             f"Season {yr} isn't in F1's free static archive (covers 2018-2021, 2023-present). "
             "Use get_championship_standings or get_historical_results for other seasons."
+        )
+    if resp.status_code == 404:
+        # A 404 on a session/feed path means it's just not published yet (not a whole-season gap).
+        raise ValueError(
+            "That F1 data isn't published yet — full timing/telemetry appears ~30 min after a "
+            "session ends."
         )
     resp.raise_for_status()
     resp.encoding = "utf-8-sig"
@@ -112,10 +118,12 @@ def _get_json(path: str) -> dict:
 
 
 def _ff1_error(e, year=None, gp=None) -> str:
-    """Friendly message for FastF1's developer-facing 'not loaded' / 'does not exist' errors,
-    which surface when a session has no data yet (future/just-run) or the GP name is wrong."""
+    """Friendly message for FastF1's 'no data yet' errors — a session that hasn't run, or only just
+    finished. Patterns kept narrow ("has not been loaded" = NotLoadedError; "No data for this
+    session" = SessionNotAvailableError) so genuine cache/network failures still surface as real
+    errors instead of telling the user to wait."""
     m = str(e)
-    if "has not been loaded" in m or "does not exist" in m or "Failed to load" in m:
+    if "has not been loaded" in m or "No data for this session" in m:
         where = f" for {gp} {year}" if gp else ""
         return f"No FastF1 data available{where} yet (sessions appear ~30-60 min after they run)."
     return f"Error: {m}"
@@ -766,11 +774,17 @@ JOLPICA = "https://api.jolpi.ca/ergast/f1"
 def _jolpica_races(url_base, max_races=25):
     """Fetch Ergast/Jolpica race results across pages. Jolpica caps `limit` at 100 and paginates
     the flat Result list, so a single race can straddle a page boundary — merge Results by round.
-    Bounded to max_races (the caller displays races[:20])."""
+    The max_races check fires after a full page, so the real bound is ~max_races + one page; the
+    caller displays races[:20]."""
     by_round, order = {}, []
     offset = 0
     while True:
-        mr = requests.get(f"{url_base}?limit=100&offset={offset}", timeout=10).json().get("MRData", {})
+        try:
+            mr = requests.get(f"{url_base}?limit=100&offset={offset}", timeout=10).json().get("MRData", {})
+        except Exception:
+            if order:
+                break   # network/JSON error mid-pagination: keep the races we already have
+            raise       # first page failed — let the caller surface the real error
         page = mr.get("RaceTable", {}).get("Races", [])
         if not page:
             break
@@ -2782,8 +2796,9 @@ def _fetch_live(topics, settle=3.5, auth_token=None):
         task = asyncio.create_task(client.connect())
         # Settle window: wait for the keyframe + a few seconds of deltas. Off-session this is
         # wasted (most days no session is live), so on the no-auth path bail out early once a
-        # keyframe with session status has arrived and it's clearly not live. Live sessions
-        # (and any auth fetch) still get the full window.
+        # keyframe with session status has arrived and it's clearly not live. Needs SessionStatus
+        # /SessionInfo in `topics` (all 16 no-auth callers pass them); live sessions and any auth
+        # fetch still get the full window.
         waited = 0.0
         while waited < settle:
             await asyncio.sleep(0.25)
