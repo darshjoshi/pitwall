@@ -56,7 +56,7 @@ Pitwall connects Claude to **real F1 data**:
 - **Lap-level telemetry** — speed, RPM, throttle, brake, gear, DRS at 4Hz per car
 - **Visual plots** — speed trace comparisons, gear shift maps returned as images
 - **75 years of history** — every race result and championship since 1950
-- **Fresh after every session** — full telemetry and timing published ~30 min after each session ends, back to 2018
+- **Fresh after every session** — full telemetry and timing published ~30 min after each session ends, back to 2018 (2022 and early-2024 are missing from F1's free archive; historical-results tools still cover them)
 - **Zero API keys** — all core data is free, no account needed
 
 ---
@@ -277,10 +277,12 @@ All core data is **free and requires no API keys**.
 
 | Source | Coverage | What it provides |
 |--------|----------|-----------------|
-| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | 2018-present | Telemetry, timing, strategy, pit stops, weather, race control |
+| [F1 Static Live Timing](https://livetiming.formula1.com/static/) | 2018-present¹ | Telemetry, timing, strategy, pit stops, weather, race control |
 | [Jolpica-F1](https://api.jolpi.ca/ergast/f1/) | 1950-present | Historical results and championships |
-| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | 2018-present | Enhanced telemetry analysis and visual plots |
+| [FastF1](https://github.com/theOehrly/Fast-F1) (optional) | 2018-present¹ | Enhanced telemetry analysis and visual plots |
 | [F1 SignalR Core](https://livetiming.formula1.com/signalrcore) (optional) | Live only | Real-time race data during active sessions |
+
+¹ F1's static archive currently has **no 2022** and only **partial early-2024**. Jolpica-backed history tools (`get_historical_results`, `get_championship_standings`) still cover those seasons.
 
 ---
 
